@@ -1,0 +1,51 @@
+name: restomart
+description: "RestoMart - Your One-Stop Solution for Food and Packaging Essentials"
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  cached_network_image: ^4.0.2
+  carousel_slider: ^5.1.2
+  cloud_firestore: ^6.10.0
+  firebase_auth: ^6.7.0
+  firebase_core: ^4.15.0
+  firebase_messaging: ^16.7.0
+  flutter:
+    sdk: flutter
+  flutter_facebook_auth: ^7.2.0
+  flutter_local_notifications: ^22.3.1
+  flutter_svg: ^2.3.0
+  font_awesome_flutter: ^11.0.0
+  geocoding: ^5.0.0
+  geolocator: ^14.1.1
+  get: ^4.7.3
+  google_fonts: ^8.2.1
+  google_maps_flutter: ^2.18.1
+  google_sign_in: ^7.2.0
+  http: ^1.6.0
+  intl: ^0.20.2
+  lottie: ^3.6.1
+  mailer: ^7.2.0
+  pdf: ^3.13.1
+  printing: ^5.15.1
+  shared_preferences: ^2.5.5
+  shimmer: ^4.0.0
+  url_launcher: ^6.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/images/RestoMart_All_Category_Images_430x430/
+    - assets/icons/
+    - assets/data/

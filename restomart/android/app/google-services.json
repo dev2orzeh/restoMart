@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "883277273690",
+    "project_id": "restomart-fe0c7",
+    "storage_bucket": "restomart-fe0c7.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:883277273690:android:6d2501fea4e16d483b5663",
+        "android_client_info": {
+          "package_name": "com.restomart.restomart"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "883277273690-h8mdt5c7pescl1r7hgaj5m6jnot5u49p.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRohev4bitGtXaz8AjFCGNqXLqxvsl8sA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "883277273690-h8mdt5c7pescl1r7hgaj5m6jnot5u49p.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
