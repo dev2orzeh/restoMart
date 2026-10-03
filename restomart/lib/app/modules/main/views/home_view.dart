@@ -813,23 +813,16 @@ class HomeView extends StatelessWidget {
     }
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () {
         if (Get.isRegistered<CartController>()) {
-          Get.toNamed('/product-details', arguments: {
-            'id': product.id.toString(),
-            'name': product.name,
-            'image': product.image,
-            'price': product.price,
-            'originalPrice': product.originalPrice ?? product.price,
-            'images': [product.image],
-            'discountPercent': discountPercent,
-            'isFavorite': false,
-            'inCart': Get.find<CartController>().isInCart(product.name),
-            'cartQuantity': Get.find<CartController>().getProductQuantity(product.name),
-            'rating': 4.5,
-            'reviews': 0,
-            'description': 'Description of ${product.name}',
-          });
+          Get.to(() => ProductDetailsView(
+            id: product.id.toString(),
+            name: product.name,
+            imagePath: product.image,
+            salePrice: product.price.toDouble(),
+            originalPrice: (product.originalPrice ?? product.price).toDouble(),
+          ));
         }
       },
       child: Container(

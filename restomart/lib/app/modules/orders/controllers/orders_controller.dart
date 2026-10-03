@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import '../../cart/controllers/cart_controller.dart';
 import '../../cart/views/cart_view.dart';
 
@@ -72,43 +73,60 @@ class OrdersController extends GetxController {
     _listenToOrders();
   }
 
+  StreamSubscription? _orderSubscription;
+
   void _listenToOrders() {
-    _firestore
-        .collection('orders')
-        .orderBy('date', descending: true)
-        .snapshots()
-        .listen((snapshot) {
-      final List<OrderModel> parsedOrders = [];
-      for (var doc in snapshot.docs) {
-        try {
-          parsedOrders.add(OrderModel.fromMap(doc.data(), doc.id));
-        } catch (e) {
-          print('Error parsing order ${doc.id}: $e');
-        }
-      }
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      _orderSubscription?.cancel();
       
-      // Check for status changes to trigger local notifications
-      if (orders.isNotEmpty) {
-        for (var change in snapshot.docChanges) {
-          if (change.type == DocumentChangeType.modified) {
-            final newData = change.doc.data();
-            if (newData != null && newData['status'] != null) {
-              final oldOrder = orders.firstWhereOrNull((o) => o.id == change.doc.id);
-              if (oldOrder != null && oldOrder.status.value != newData['status']) {
-                PushNotificationService.showOrderStatusNotification(change.doc.id, newData['status']);
+      if (user == null) {
+        orders.value = [];
+        return;
+      }
+
+      _orderSubscription = _firestore
+          .collection('orders')
+          .orderBy('date', descending: true)
+          .snapshots()
+          .listen((snapshot) {
+        final List<OrderModel> parsedOrders = [];
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          if (data['userId'] == user.uid) { // Strictly match the active user
+            try {
+              parsedOrders.add(OrderModel.fromMap(data, doc.id));
+            } catch (e) {
+              print('Error parsing order ${doc.id}: $e');
+            }
+          }
+        }
+        
+        // Check for status changes to trigger local notifications
+        if (orders.isNotEmpty) {
+          for (var change in snapshot.docChanges) {
+            if (change.type == DocumentChangeType.modified) {
+              final newData = change.doc.data();
+              if (newData != null && newData['status'] != null) {
+                final oldOrder = orders.firstWhereOrNull((o) => o.id == change.doc.id);
+                if (oldOrder != null && oldOrder.status.value != newData['status']) {
+                  PushNotificationService.showOrderStatusNotification(change.doc.id, newData['status']);
+                }
               }
             }
           }
         }
-      }
 
-      orders.value = parsedOrders;
-    }, onError: (e) => print('Error listening to orders: $e'));
+        orders.value = parsedOrders;
+      }, onError: (e) => print('Error listening to orders: $e'));
+    });
   }
 
   Future<void> addOrder(OrderModel order) async {
     try {
-      await _firestore.collection('orders').doc(order.id).set(order.toMap());
+      final map = order.toMap();
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) map['userId'] = uid;
+      await _firestore.collection('orders').doc(order.id).set(map);
     } catch (e) {
       Get.snackbar('Error', 'Failed to place order: $e');
     }

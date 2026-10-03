@@ -63,16 +63,16 @@ class ForgotPasswordScreen extends GetView<AuthController> {
 
                 const SizedBox(height: AppDimensions.spacingXxl),
 
-                // ── Phone Field ─────────────────────────────────
+                // ── Email Field ─────────────────────────────────
                 CustomTextField(
-                  controller: controller.forgotEmailController, // Still using this controller for now, will repurpose
-                  hintText: 'Enter your phone number (e.g. +923001234567)',
-                  prefixIcon: Icons.phone_android,
-                  keyboardType: TextInputType.phone,
+                  controller: controller.forgotEmailController,
+                  hintText: 'Enter your email address',
+                  prefixIcon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
                   suffixIcon: GetBuilder<AuthController>(builder: (c) {
-                    // Show golden check when phone is valid.
-                    final phone = c.forgotEmailController.text.trim();
-                    if (phone.length >= 10) {
+                    final email = c.forgotEmailController.text.trim();
+                    final isValid = RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(email);
+                    if (isValid) {
                       return const Icon(
                         Icons.check_circle,
                         color: AppColors.accent,
@@ -83,10 +83,10 @@ class ForgotPasswordScreen extends GetView<AuthController> {
                   }),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your phone number';
+                      return 'Please enter your email address';
                     }
-                    if (!RegExp(r'^\+[1-9]\d{9,14}$').hasMatch(value.trim())) {
-                      return 'Must include country code (e.g. +923001234567)';
+                    if (!RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(value.trim())) {
+                      return 'Please enter a valid email address';
                     }
                     return null;
                   },
@@ -101,7 +101,7 @@ class ForgotPasswordScreen extends GetView<AuthController> {
                 // ── Send Button ─────────────────────────────────
                 Obx(() => PrimaryButton(
                       text: AppStrings.send,
-                      onPressed: controller.sendForgotPasswordOtp,
+                      onPressed: controller.sendForgotPasswordEmail,
                       isLoading: controller.isLoading.value,
                     )),
               ],

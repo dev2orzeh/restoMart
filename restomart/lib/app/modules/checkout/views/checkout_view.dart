@@ -402,13 +402,22 @@ class _CheckoutViewState extends State<CheckoutView> {
                               "billing": billing,
                               "shipping": billing,
                               "line_items": lineItems,
+                              "shipping_lines": [
+                                {
+                                  "method_id": "flat_rate",
+                                  "method_title": "Delivery Fee",
+                                  "total": shipping.toString()
+                                }
+                              ],
                               "customer_note": _instructionsController.text
                             };
 
                             // 3. Post to WordPress
-                            bool success = await WooCommerceApiService.createOrder(payload);
+                            String? wooOrderId = await WooCommerceApiService.createOrder(payload);
 
-                            if (success) {
+                            if (wooOrderId != null) {
+                              _orderNumber = wooOrderId; // Update local order number to match WooCommerce
+
                               final newOrder = OrderModel(
                                 id: _orderNumber!,
                                 date: DateTime.now(),

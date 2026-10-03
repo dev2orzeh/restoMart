@@ -157,89 +157,75 @@ class AccountView extends StatelessWidget {
             const SizedBox(height: 16),
 
             // ── Repeat Last Order (Highlighted) ─────────────────────
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: GestureDetector(
-                onTap: () {
-                  final ordersController = Get.find<OrdersController>();
-                  if (ordersController.orders.isNotEmpty) {
-                    ordersController.reorder(ordersController.orders.first);
-                  } else {
-                    Get.snackbar('No Orders', 'You do not have any past orders yet.', snackPosition: SnackPosition.BOTTOM);
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFFF8E1), Color(0xFFFFF3C4)],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFFFD54F), width: 1.5),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFFFD54F),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.replay, color: Color(0xFF25258F), size: 24),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Obx(() {
-                          final ordersController = Get.find<OrdersController>();
-                          if (ordersController.orders.isNotEmpty) {
-                            final lastOrder = ordersController.orders.first;
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Repeat Last Order',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF2C3E50)),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${lastOrder.items.fold<int>(0, (sum, item) => sum + item.quantity)} items • Rs. ${lastOrder.total.toInt()}',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                                ),
-                              ],
-                            );
-                          } else {
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Repeat Last Order',
-                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF2C3E50)),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'No past orders available',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                                ),
-                              ],
-                            );
-                          }
-                        }),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            Obx(() {
+              final ordersController = Get.find<OrdersController>();
+              if (ordersController.orders.isEmpty) return const SizedBox.shrink();
+              
+              final lastOrder = ordersController.orders.first;
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: GestureDetector(
+                      onTap: () {
+                        ordersController.reorder(lastOrder);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF25258F),
-                          borderRadius: BorderRadius.circular(20),
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFFF8E1), Color(0xFFFFF3C4)],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFFFD54F), width: 1.5),
                         ),
-                        child: const Text('Reorder', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFFFD54F),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.replay, color: Color(0xFF25258F), size: 24),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Repeat Last Order',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF2C3E50)),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${lastOrder.items.fold<int>(0, (sum, item) => sum + item.quantity)} items • Rs. ${lastOrder.total.toInt()}',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF25258F),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text('Reorder', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                            ),
+                          ],
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                ],
+              );
+            }),
+
 
             // ── Orders & Lists ──────────────────────────────────────
             _buildSection(

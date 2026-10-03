@@ -429,39 +429,27 @@ class AuthController extends GetxController {
 
   String verificationId = '';
 
-  /// Handle forgot password — send SMS OTP.
-  Future<void> sendForgotPasswordOtp() async {
+  /// Handle forgot password — send Password Reset Email.
+  Future<void> sendForgotPasswordEmail() async {
     if (!(forgotFormKey.currentState?.validate() ?? false)) return;
 
     isLoading.value = true;
-    final phone = forgotEmailController.text.trim(); // We are using this controller for phone now
+    final email = forgotEmailController.text.trim();
 
     try {
-      await FirebaseAuth.instance.verifyPhoneNumber(
-        phoneNumber: phone,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-resolution on Android
-          await FirebaseAuth.instance.signInWithCredential(credential);
-          Get.snackbar('Success', 'Phone number automatically verified!');
-          Get.offAllNamed(AppRoutes.resetPassword);
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          isLoading.value = false;
-          Get.snackbar('Verification Failed', e.message ?? 'Unknown error', backgroundColor: Colors.red.shade50);
-        },
-        codeSent: (String verId, int? resendToken) {
-          isLoading.value = false;
-          verificationId = verId;
-          Get.snackbar('OTP Sent', 'A 6-digit code has been sent via SMS.', backgroundColor: Colors.green.shade50);
-          Get.toNamed(AppRoutes.otpVerification);
-        },
-        codeAutoRetrievalTimeout: (String verId) {
-          verificationId = verId;
-        },
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      Get.snackbar(
+        'Email Sent', 
+        'Password reset link has been sent to your email address.', 
+        backgroundColor: Colors.green.shade50,
+        colorText: Colors.green.shade900,
+        duration: const Duration(seconds: 4),
       );
+      Get.offAllNamed(AppRoutes.login);
     } catch (e) {
-      isLoading.value = false;
       Get.snackbar('Error', e.toString(), backgroundColor: Colors.red.shade50);
+    } finally {
+      isLoading.value = false;
     }
   }
 

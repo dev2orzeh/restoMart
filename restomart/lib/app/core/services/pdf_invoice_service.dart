@@ -91,6 +91,22 @@ class PdfInvoiceService {
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [
+                  pw.Text('Subtotal: ', style: pw.TextStyle(fontSize: 14)),
+                  pw.Text('Rs ${(order.total - (order.total > 0 && order.total > order.items.fold(0.0, (sum, item) => sum + (item.price * item.quantity)) ? order.total - order.items.fold(0.0, (sum, item) => sum + (item.price * item.quantity)) : 0)).toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 14)),
+                ]
+              ),
+              pw.SizedBox(height: 4),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  pw.Text('Delivery Fee: ', style: pw.TextStyle(fontSize: 14)),
+                  pw.Text('Rs ${(order.total > order.items.fold(0.0, (sum, item) => sum + (item.price * item.quantity)) ? order.total - order.items.fold(0.0, (sum, item) => sum + (item.price * item.quantity)) : 0.0).toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 14)),
+                ]
+              ),
+              pw.SizedBox(height: 8),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
                   pw.Text('Total Amount: ', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
                   pw.Text('Rs ${order.total.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
                 ]
@@ -192,6 +208,22 @@ class PdfInvoiceService {
               pw.Divider(color: PdfColors.grey300),
               pw.SizedBox(height: 10),
               
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  pw.Text('Subtotal: ', style: pw.TextStyle(fontSize: 14)),
+                  pw.Text('Rs ${(order.total - (order.total > 0 && order.total > order.items.fold(0.0, (sum, item) => sum + (item.price * item.quantity)) ? order.total - order.items.fold(0.0, (sum, item) => sum + (item.price * item.quantity)) : 0)).toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 14)),
+                ]
+              ),
+              pw.SizedBox(height: 4),
+              pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.end,
+                children: [
+                  pw.Text('Delivery Fee: ', style: pw.TextStyle(fontSize: 14)),
+                  pw.Text('Rs ${(order.total > order.items.fold(0.0, (sum, item) => sum + (item.price * item.quantity)) ? order.total - order.items.fold(0.0, (sum, item) => sum + (item.price * item.quantity)) : 0.0).toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 14)),
+                ]
+              ),
+              pw.SizedBox(height: 8),
               pw.Row(
                 mainAxisAlignment: pw.MainAxisAlignment.end,
                 children: [

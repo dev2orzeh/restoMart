@@ -39,7 +39,7 @@ class AppStrings {
   static const String login = 'Login';
 
   // ── Auth — Forgot Password ────────────────────────────────────────
-  static const String forgotPasswordTitle = 'Enter your phone number';
+  static const String forgotPasswordTitle = 'Enter your e-mail';
   static const String forgotPasswordSubtitle = "Let's reset your password";
   static const String send = 'Send';
 

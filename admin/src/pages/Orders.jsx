@@ -221,10 +221,23 @@ export default function Orders() {
                           value={order.status}
                           onChange={async (e) => {
                             const newStatus = e.target.value;
+                            
+                            // Instantly update the local UI state so it doesn't snap back
+                            setOrdersData(prev => 
+                              prev.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
+                            );
+
                             try {
+                              // WooCommerce doesn't natively support "shipped" or "delivered" by default
+                              // Map them to "completed" for the WooCommerce backend, but keep the exact status for Firebase
+                              let wooStatus = newStatus;
+                              if (newStatus === 'shipped' || newStatus === 'delivered') {
+                                wooStatus = 'completed';
+                              }
+
                               await Promise.all([
                                 updateOrderStatus(order.id, newStatus),
-                                updateOrder(order.id, newStatus)
+                                updateOrder(order.id, wooStatus)
                               ]);
                             } catch (error) {
                               console.error("Failed to update status", error);

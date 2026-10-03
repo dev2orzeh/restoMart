@@ -84,7 +84,7 @@ class WooCommerceApiService {
   }
 
   /// Create an order in WooCommerce
-  static Future<bool> createOrder(Map<String, dynamic> orderData) async {
+  static Future<String?> createOrder(Map<String, dynamic> orderData) async {
     try {
       final url = _appendAuth('$_baseUrl/orders');
       final response = await http.post(
@@ -94,14 +94,15 @@ class WooCommerceApiService {
       );
       if (response.statusCode == 201) {
         log('WOOCOMMERCE API: Order created successfully!');
-        return true;
+        final responseData = json.decode(response.body);
+        return responseData['id'].toString();
       } else {
         log('WOOCOMMERCE API: Failed to create order: ${response.body}');
-        return false;
+        return null;
       }
     } catch (e) {
       log('WOOCOMMERCE API: Exception creating order - $e');
-      return false;
+      return null;
     }
   }
 

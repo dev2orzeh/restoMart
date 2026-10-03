@@ -105,9 +105,9 @@ class EmailService {
 ''';
 
     final message = Message()
-      ..from = Address(_smtpUsername, 'RestoMart B2B')
+      ..from = Address('ali@restomart.pk', 'RestoMart B2B')
       ..recipients.add(recipientEmail)
-      ..subject = 'Your RestoMart Order #${order.id} is confirmed!'
+      ..subject = 'Your RestoMart Order #${order.id} is confirmed! (${DateTime.now().toLocal().toString().split('.')[0]})'
       ..html = htmlBody
       ..attachments.add(
         StreamAttachment(
@@ -150,7 +150,7 @@ class EmailService {
 ''';
 
     final message = Message()
-      ..from = Address(_smtpUsername, 'RestoMart B2B')
+      ..from = Address('ali@restomart.pk', 'RestoMart B2B')
       ..recipients.add(recipientEmail)
       ..subject = 'Order Cancelled - #${order.id}'
       ..html = htmlBody;
