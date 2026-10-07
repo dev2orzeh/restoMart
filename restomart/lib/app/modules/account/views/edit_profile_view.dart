@@ -1,5 +1,9 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../auth/controllers/auth_controller.dart';
 import 'package:get/get.dart';
 import '../../../core/constants/app_colors.dart';
@@ -18,8 +22,19 @@ class _EditProfileViewState extends State<EditProfileView> {
   late TextEditingController nameController;
   late TextEditingController emailController;
   late TextEditingController phoneController;
+  late TextEditingController businessNameController;
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   bool isLoading = false;
+
+  bool isGoogleLogin() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      for (var info in user.providerData) {
+        if (info.providerId == 'google.com') return true;
+      }
+    }
+    return false;
+  }
 
   @override
   void initState() {
@@ -28,6 +43,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     nameController = TextEditingController(text: authController.userName.value);
     emailController = TextEditingController(text: authController.userEmail.value);
     phoneController = TextEditingController(text: authController.userPhone.value);
+    businessNameController = TextEditingController(text: authController.businessName.value);
   }
 
   @override
@@ -35,6 +51,7 @@ class _EditProfileViewState extends State<EditProfileView> {
     nameController.dispose();
     emailController.dispose();
     phoneController.dispose();
+    businessNameController.dispose();
     super.dispose();
   }
 
@@ -48,8 +65,27 @@ class _EditProfileViewState extends State<EditProfileView> {
     
     final authController = Get.find<AuthController>();
     authController.userName.value = nameController.text.trim();
-    authController.userEmail.value = emailController.text.trim();
+    if (!isGoogleLogin()) {
+      authController.userEmail.value = emailController.text.trim();
+    }
     authController.userPhone.value = phoneController.text.trim();
+    authController.businessName.value = businessNameController.text.trim();
+    
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final prefs = await SharedPreferences.getInstance();
+    if (uid != null) {
+      await prefs.setString('local_business_name_$uid', businessNameController.text.trim());
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'businessName': businessNameController.text.trim(),
+          'displayName': nameController.text.trim(),
+          'phone': phoneController.text.trim(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('Error updating Firestore profile: $e');
+      }
+    }
     
     try {
       await FirebaseAuth.instance.currentUser?.updateDisplayName(nameController.text.trim());
@@ -100,19 +136,23 @@ class _EditProfileViewState extends State<EditProfileView> {
                 children: [
                   Obx(() {
                     final authController = Get.find<AuthController>();
+                    final imgProvider = _getProfileImageProvider(authController.profileImagePath.value);
                     return CircleAvatar(
                       radius: 50,
                       backgroundColor: const Color(0xFFF0F0FF),
-                      child: Text(
-                        authController.userName.value.isNotEmpty 
-                            ? authController.userName.value.substring(0, 1).toUpperCase() 
-                            : 'U',
-                        style: const TextStyle(
-                          color: Color(0xFF25258F),
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      backgroundImage: imgProvider,
+                      child: imgProvider == null 
+                          ? Text(
+                              authController.userName.value.isNotEmpty 
+                                  ? authController.userName.value.substring(0, 1).toUpperCase() 
+                                  : 'U',
+                              style: const TextStyle(
+                                color: Color(0xFF25258F),
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
+                          : null,
                     );
                   }),
                   Positioned(
@@ -120,13 +160,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                     right: 0,
                     child: GestureDetector(
                       onTap: () {
-                        Get.snackbar(
-                          'Change Photo',
-                          'Profile photo upload requires a backend storage bucket which will be linked soon.',
-                          snackPosition: SnackPosition.BOTTOM,
-                          backgroundColor: Colors.white,
-                          colorText: Colors.black,
-                        );
+                        Get.find<AuthController>().pickProfileImage();
                       },
                       child: Container(
                         padding: const EdgeInsets.all(8),
@@ -146,24 +180,34 @@ class _EditProfileViewState extends State<EditProfileView> {
               // ── Fields ───────────────────────────────
               CustomTextField(
                 controller: nameController,
-                hintText: 'Restaurant Name',
+                hintText: 'Full Name',
                 prefixIcon: Icons.person_outline,
-                validator: (value) => value == null || value.isEmpty ? 'Please enter a name' : null,
+                validator: (value) => value == null || value.isEmpty ? 'Please enter your full name' : null,
               ),
               const SizedBox(height: 16),
               
               CustomTextField(
-                controller: emailController,
-                hintText: 'Email Address',
-                prefixIcon: Icons.email_outlined,
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return 'Please enter an email';
-                  if (!GetUtils.isEmail(value)) return 'Enter a valid email';
-                  return null;
-                },
+                controller: businessNameController,
+                hintText: 'Business / Restaurant Name (Optional)',
+                prefixIcon: Icons.storefront_outlined,
+                validator: (value) => null, // Optional
               ),
               const SizedBox(height: 16),
+              
+              if (!isGoogleLogin()) ...[
+                CustomTextField(
+                  controller: emailController,
+                  hintText: 'Email Address',
+                  prefixIcon: Icons.email_outlined,
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Please enter an email';
+                    if (!GetUtils.isEmail(value)) return 'Enter a valid email';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+              ],
               
               CustomTextField(
                 controller: phoneController,
@@ -185,5 +229,25 @@ class _EditProfileViewState extends State<EditProfileView> {
         ),
       ),
     );
+  }
+
+  ImageProvider? _getProfileImageProvider(String path) {
+    if (path.isEmpty) return null;
+    try {
+      if (path.startsWith('data:image')) {
+        final clean = path.split(',').last;
+        return MemoryImage(base64Decode(clean));
+      } else if (path.startsWith('http')) {
+        return NetworkImage(path);
+      } else {
+        final file = File(path);
+        if (file.existsSync()) {
+          return FileImage(file);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error parsing profile image provider: $e');
+    }
+    return null;
   }
 }

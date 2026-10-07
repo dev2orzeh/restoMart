@@ -27,6 +27,16 @@ class _AllProductsViewState extends State<AllProductsView> {
   int _currentPage = 1;
   bool _isLoading = false;
   bool _hasMore = true;
+  int _fetchId = 0; // Tracks the current active fetch request to prevent race conditions
+
+  String _selectedSort = 'default';
+  final List<Map<String, String>> _sortOptions = [
+    {'value': 'default', 'label': 'Default sorting'},
+    {'value': 'popularity', 'label': 'Sort by popularity'},
+    {'value': 'date', 'label': 'Sort by latest'},
+    {'value': 'price_asc', 'label': 'Sort by price: low to high'},
+    {'value': 'price_desc', 'label': 'Sort by price: high to low'},
+  ];
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
@@ -46,27 +56,57 @@ class _AllProductsViewState extends State<AllProductsView> {
   }
 
   void _initData() {
-    // 1. Grab categories from HomeController and add "All"
-    final homeController = Get.isRegistered<HomeController>() ? Get.find<HomeController>() : Get.put(HomeController());
-    _categories = [
-      {'id': 0, 'name': 'All Products'},
-      ...homeController.categories
+    // 1. Define curated categories to match CategoriesView exactly
+    // 1. Define curated categories with exact WooCommerce IDs to prevent string-matching bugs
+    final curated = [
+      {'title': 'Cheese', 'target': 'Cheese', 'id': 354},
+      {'title': 'Beverages', 'target': 'Beverage', 'id': 18},
+      {'title': 'Cooking Oils', 'target': 'Oil', 'id': 355},
+      {'title': 'Milks', 'target': 'Milk', 'id': 60}, // 60 is Dairy Milk, not 1043 (Makeup Milk)
+      {'title': 'Packaging Boxes', 'target': 'Packaging', 'id': 50},
+      {'title': 'Tea', 'target': 'Tea', 'id': 59},
+      {'title': 'Spices', 'target': 'Masala', 'id': 350},
+      {'title': 'Dry Fruits', 'target': 'Dry Fruits', 'id': 357},
+      {'title': 'Cleaning Products', 'target': 'Cleaning', 'id': 52},
+      {'title': 'Baking Products', 'target': 'Baking', 'id': 356},
+      {'title': 'Canned Products', 'target': 'Canned', 'id': 20},
+      {'title': 'Stationary', 'target': 'Stationary', 'id': 346},
+      {'title': 'Beauty Products', 'target': 'anua', 'id': 1011}, // 1011 is Makeup
+      {'title': 'Kitchen Accessories', 'target': 'Kitchen Accessories', 'id': 221},
+      {'title': 'Sauces & Condiments', 'target': 'Sauce', 'id': 23},
+      {'title': 'Coffee', 'target': 'Coffee', 'id': 337},
+      {'title': 'Disposables', 'target': 'Disposable', 'id': 220},
+      {'title': 'Chocolates', 'target': 'Chocolate', 'id': 40},
+      {'title': 'Sweets & Desserts', 'target': 'Sweet', 'id': 336},
+      {'title': 'Tissues & Hygiene', 'target': 'Tissues', 'id': 345},
+      {'title': 'Fragrances', 'target': 'Fragrance', 'id': 41},
+      {'title': 'Footwear', 'target': 'Footwear', 'id': 1247},
     ];
+
+    _categories = [{'id': 0, 'name': 'All Products', 'target': null}];
+    
+    for (var c in curated) {
+      _categories.add({
+        'id': c['id'], 
+        'name': c['title'],
+        'target': c['target'],
+      });
+    }
 
     // 2. Select initial category if provided
     if (widget.initialCategory != null) {
       final initialStr = widget.initialCategory!.toLowerCase();
       final idx = _categories.indexWhere((c) {
-        final catName = (c['name'] as String).toLowerCase();
-        final decodedName = catName.replaceAll('&amp;', '&');
-        return decodedName.contains(initialStr) || initialStr.contains(decodedName) || 
-               decodedName.replaceAll('s', '') == initialStr.replaceAll('s', '');
+        final target = (c['target'] as String?)?.toLowerCase() ?? '';
+        final name = (c['name'] as String).toLowerCase();
+        return target == initialStr || name.contains(initialStr) || initialStr.contains(name) ||
+               name.replaceAll('s', '') == initialStr.replaceAll('s', '');
       });
+      
       if (idx != -1) {
         _selectedCategoryIndex = idx;
       } else {
-        // Fallback: If it's a custom keyword (e.g. 'anua', 'tirtir') that isn't a direct WC category,
-        // we use it as the search query to filter the products list.
+        // Fallback: If completely unknown, just search for it in All Products
         _searchQuery = widget.initialCategory!;
         _searchController.text = widget.initialCategory!;
       }
@@ -77,7 +117,10 @@ class _AllProductsViewState extends State<AllProductsView> {
   }
 
   Future<void> _fetchProducts({bool loadMore = false}) async {
-    if (_isLoading || (!_hasMore && loadMore)) return;
+    // Only block if we are loading MORE for the current page, or if there's no more to load
+    if (loadMore && (_isLoading || !_hasMore)) return;
+    
+    final currentFetchId = ++_fetchId;
 
     if (!loadMore) {
       setState(() {
@@ -93,18 +136,96 @@ class _AllProductsViewState extends State<AllProductsView> {
     }
 
     try {
-      final categoryId = _categories[_selectedCategoryIndex]['id'] as int;
+      final currentCategory = _categories[_selectedCategoryIndex];
+      final categoryId = currentCategory['id'] as int;
+      final targetKeyword = currentCategory['target'] as String?;
+
+      String? finalSearchQuery = _searchQuery.isEmpty ? null : _searchQuery;
+      
+      // If we are on a category tab that has no WooCommerce ID, we use its target keyword as the search query
+      if (categoryId == 0 && targetKeyword != null && _searchQuery.isEmpty) {
+        finalSearchQuery = targetKeyword;
+      }
+      
+      String? orderBy;
+      String? order;
+      if (_selectedSort == 'popularity') {
+        orderBy = 'popularity';
+      } else if (_selectedSort == 'date') {
+        orderBy = 'date';
+        order = 'desc';
+      } else if (_selectedSort == 'price_asc') {
+        orderBy = 'price';
+        order = 'asc';
+      } else if (_selectedSort == 'price_desc') {
+        orderBy = 'price';
+        order = 'desc';
+      }
+
       final newProducts = await WooCommerceApiService.getProducts(
         page: _currentPage,
-        perPage: 20,
+        perPage: finalSearchQuery != null ? 50 : 20,
         categoryId: categoryId == 0 ? null : categoryId.toString(),
-        searchQuery: _searchQuery.isEmpty ? null : _searchQuery,
+        searchQuery: finalSearchQuery,
+        orderBy: orderBy,
+        order: order,
       );
 
       setState(() {
+        if (currentFetchId != _fetchId) return; // Discard results if a newer request was started
+        
         if (newProducts.isEmpty) {
           _hasMore = false;
         } else {
+          if (_searchQuery.isNotEmpty) {
+            final q = _searchQuery.toLowerCase();
+            final words = q.split(RegExp(r'\s+'));
+            
+            // Separate into: title matches vs description-only matches
+            final List<dynamic> titleMatches = [];
+            final List<dynamic> descriptionOnlyMatches = [];
+            
+            for (final product in newProducts) {
+              final name = (product['name']?.toString() ?? '').toLowerCase();
+              // Check if ANY search word appears in the product title
+              final hasWordInTitle = words.any((w) => 
+                name.split(RegExp(r'[\s\-_,.()/]+')).any((titleWord) => titleWord.startsWith(w) || w.startsWith(titleWord))
+              );
+              
+              if (hasWordInTitle) {
+                titleMatches.add(product);
+              } else {
+                descriptionOnlyMatches.add(product);
+              }
+            }
+            
+            // Sort title matches: intelligent AI sorting for 'pure' matches
+            titleMatches.sort((a, b) {
+              final aName = (a['name']?.toString() ?? '').toLowerCase();
+              final bName = (b['name']?.toString() ?? '').toLowerCase();
+              
+              // Priority 1: Exact match with query
+              if (aName == q && bName != q) return -1;
+              if (bName == q && aName != q) return 1;
+
+              // Priority 2: Name starts with query
+              final aStarts = aName.startsWith(q) ? 1 : 0;
+              final bStarts = bName.startsWith(q) ? 1 : 0;
+              if (aStarts != bStarts) return bStarts.compareTo(aStarts);
+              
+              // Priority 3: Has exact word match
+              final aExact = aName.split(RegExp(r'[\s\-_,.()/]+')).any((w) => words.contains(w)) ? 1 : 0;
+              final bExact = bName.split(RegExp(r'[\s\-_,.()/]+')).any((w) => words.contains(w)) ? 1 : 0;
+              if (aExact != bExact) return bExact.compareTo(aExact);
+              
+              // Priority 4: Length of the name (shorter names are usually purer/closer to the actual query)
+              return aName.length.compareTo(bName.length);
+            });
+            
+            // Show ONLY title matches, hide description-only matches completely
+            newProducts.clear();
+            newProducts.addAll(titleMatches);
+          }
           _products.addAll(newProducts);
           _currentPage++;
         }
@@ -112,6 +233,8 @@ class _AllProductsViewState extends State<AllProductsView> {
       });
     } catch (e) {
       log('Error fetching products in AllProductsView: $e');
+      if (currentFetchId != _fetchId) return; // Discard errors for old requests
+      
       Get.snackbar(
         'Network Error', 
         'Could not load products. Please check your internet connection.',
@@ -135,6 +258,8 @@ class _AllProductsViewState extends State<AllProductsView> {
     if (_selectedCategoryIndex == index) return;
     setState(() {
       _selectedCategoryIndex = index;
+      _searchQuery = '';
+      _searchController.clear();
     });
     _fetchProducts(loadMore: false);
   }
@@ -157,16 +282,41 @@ class _AllProductsViewState extends State<AllProductsView> {
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.primary),
-        title: Text(
-          _categories.isNotEmpty ? _categories[_selectedCategoryIndex]['name'] : 'All Products', 
-          style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)
-        ),
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Aesthetic Category Header ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _categories.isNotEmpty ? _categories[_selectedCategoryIndex]['name'] : 'All Products', 
+                  style: const TextStyle(
+                    color: Color(0xFF20283A),
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Browse premium items for your restaurant',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
           // ── Search Bar ──
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
             child: TextField(
               controller: _searchController,
               focusNode: _searchFocusNode,
@@ -177,7 +327,7 @@ class _AllProductsViewState extends State<AllProductsView> {
                   setState(() {
                     _searchQuery = value.trim();
                     if (_searchQuery.isNotEmpty) {
-                      _selectedCategoryIndex = 0; // Automatically switch to "All Products" tab so it searches globally
+                      // Removed forced switch to "All Products" so users can search within the current category tab.
                     }
                   });
                   _fetchProducts(loadMore: false);
@@ -188,7 +338,7 @@ class _AllProductsViewState extends State<AllProductsView> {
                 setState(() {
                   _searchQuery = value.trim();
                   if (_searchQuery.isNotEmpty) {
-                    _selectedCategoryIndex = 0; // Automatically switch to "All Products" tab so it searches globally
+                    // Removed forced switch to "All Products" so users can search within the current category tab.
                   }
                 });
                 _fetchProducts(loadMore: false);
@@ -267,6 +417,36 @@ class _AllProductsViewState extends State<AllProductsView> {
             ),
           const Divider(height: 1, color: Colors.black12),
           
+          // ── Sorting Dropdown ──
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                DropdownButton<String>(
+                  value: _selectedSort,
+                  underline: const SizedBox(),
+                  icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
+                  style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.w600),
+                  items: _sortOptions.map((option) {
+                    return DropdownMenuItem<String>(
+                      value: option['value'],
+                      child: Text(option['label']!),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null && value != _selectedSort) {
+                      setState(() {
+                        _selectedSort = value;
+                      });
+                      _fetchProducts(loadMore: false);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          
           // ── Products Grid ──
           Expanded(
             child: _products.isEmpty && _isLoading
@@ -283,7 +463,7 @@ class _AllProductsViewState extends State<AllProductsView> {
   Widget _buildProductGrid() {
     return GridView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         childAspectRatio: 0.60, // Match HomeView ProductCard aspect ratio

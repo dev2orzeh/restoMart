@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'all_products_view.dart';
 import 'product_details_view.dart';
 import 'promotions_view.dart';
@@ -33,7 +34,7 @@ class HomeView extends StatelessWidget {
                     ? Get.find<AddressController>() 
                     : Get.put(AddressController());
                 return Obx(() {
-                  final addr = addressController.selectedAddress?['address'] ?? 'Select Delivery Address';
+                  final addr = addressController.selectedAddress?['address'] ?? 'No Address Added';
               
               return GestureDetector(
                 onTap: () {
@@ -67,6 +68,23 @@ class HomeView extends StatelessWidget {
                               );
                             }),
                           )),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                Get.back(); // close current sheet
+                                _showAddAddressDialog(addressController);
+                              },
+                              icon: const Icon(Icons.add, color: Color(0xFF25258F)),
+                              label: const Text('Add New Address', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold)),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                side: const BorderSide(color: Color(0xFF25258F)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -157,7 +175,9 @@ class HomeView extends StatelessWidget {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
-                  children: List.generate(controller.categories.length, (index) {
+                  children: List.generate(
+                    controller.categories.length > 8 ? 8 : controller.categories.length, 
+                    (index) {
                     final cat = controller.categories[index];
                     final String name = cat['name'] ?? 'Unknown';
                     
@@ -458,6 +478,70 @@ class HomeView extends StatelessWidget {
     );
   }
 
+  void _showAddAddressDialog(AddressController addressController) {
+    final TextEditingController labelController = TextEditingController();
+    final TextEditingController addressControllerInput = TextEditingController();
+    
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Add Address', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: labelController,
+              decoration: const InputDecoration(
+                labelText: 'Label (e.g. Home, Office)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: addressControllerInput,
+              decoration: const InputDecoration(
+                labelText: 'House/Apartment Number & Street',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Location picking will be added later.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (addressControllerInput.text.trim().isNotEmpty) {
+                String label = labelController.text.trim();
+                if (label.isEmpty) label = 'Address';
+                addressController.addAddress(label, addressControllerInput.text.trim());
+                Get.back();
+                Get.snackbar(
+                  'Address Added', 
+                  'Your new address has been saved.',
+                  backgroundColor: Colors.green.shade50,
+                  colorText: Colors.green.shade800,
+                  snackPosition: SnackPosition.TOP,
+                );
+              } else {
+                Get.snackbar('Required', 'Please enter an address.', backgroundColor: Colors.red.shade50, colorText: Colors.red);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25258F), foregroundColor: Colors.white),
+            child: const Text('Save Address'),
+          ),
+        ],
+      )
+    );
+  }
+
   Widget _buildCategoryItem(String name, String image, Color bgColor) {
     return GestureDetector(
       onTap: () {
@@ -475,7 +559,7 @@ class HomeView extends StatelessWidget {
             child: image.isEmpty 
                 ? const Icon(Icons.image_not_supported, color: Colors.grey)
                 : image.startsWith('http') 
-                  ? Image.network(image, fit: BoxFit.cover, errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported, color: Colors.grey))
+                  ? CachedNetworkImage(imageUrl: image, fit: BoxFit.cover, memCacheWidth: 140, placeholder: (c,u) => const SizedBox(), errorWidget: (c,u,e) => const Icon(Icons.image_not_supported, color: Colors.grey))
                   : Image.asset(
                       image, 
                       fit: BoxFit.contain,
@@ -571,7 +655,7 @@ class HomeView extends StatelessWidget {
                 child: image.isEmpty 
                   ? const Icon(Icons.image_not_supported, color: Colors.grey)
                   : image.startsWith('http') 
-                    ? Image.network(image, fit: BoxFit.contain, errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported, color: Colors.grey))
+                    ? CachedNetworkImage(imageUrl: image, fit: BoxFit.contain, memCacheWidth: 280, placeholder: (c,u) => const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))), errorWidget: (c,u,e) => const Icon(Icons.image_not_supported, color: Colors.grey))
                     : Image.asset(image, fit: BoxFit.contain),
               ),
               Positioned(
@@ -694,7 +778,7 @@ class HomeView extends StatelessWidget {
             child: image.isEmpty 
               ? const Icon(Icons.image_not_supported, color: Colors.grey)
               : image.startsWith('http') 
-                ? Image.network(image, fit: BoxFit.contain, errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported, color: Colors.grey))
+                ? CachedNetworkImage(imageUrl: image, fit: BoxFit.contain, memCacheWidth: 200, placeholder: (c,u) => const SizedBox(), errorWidget: (c,u,e) => const Icon(Icons.image_not_supported, color: Colors.grey))
                 : Image.asset(image, fit: BoxFit.contain),
           ),
           Expanded(
@@ -845,7 +929,7 @@ class HomeView extends StatelessWidget {
                   child: product.image.isEmpty 
                     ? const Icon(Icons.image_not_supported, color: Colors.grey)
                     : (product.image.startsWith('http') 
-                        ? Image.network(product.image, fit: BoxFit.contain, errorBuilder: (c,e,s) => const Icon(Icons.image_not_supported, color: Colors.grey))
+                        ? CachedNetworkImage(imageUrl: product.image, fit: BoxFit.contain, memCacheWidth: 240, placeholder: (c,u) => const SizedBox(), errorWidget: (c,u,e) => const Icon(Icons.image_not_supported, color: Colors.grey))
                         : Image.asset(product.image, fit: BoxFit.contain)),
                 ),
                 if (discountPercent > 0)
@@ -1057,7 +1141,7 @@ class _AutoSwipingBannerState extends State<_AutoSwipingBanner> {
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 4), (Timer timer) {
-      if (_currentPage < 1) {
+      if (_currentPage < 3) {
         _currentPage++;
       } else {
         _currentPage = 0;
@@ -1098,7 +1182,15 @@ class _AutoSwipingBannerState extends State<_AutoSwipingBanner> {
           ),
           GestureDetector(
             onTap: () => Get.to(() => const PromotionsView()),
-            child: Image.asset('assets/images/salebanner.png', width: double.infinity, fit: BoxFit.cover),
+            child: Image.asset('assets/images/minimalist_yellow_sale_banner.png', width: double.infinity, fit: BoxFit.cover),
+          ),
+          GestureDetector(
+            onTap: () => Get.to(() => const AllProductsView()),
+            child: Image.asset('assets/images/restomart_grocery_category_shopping_banner_1.png', width: double.infinity, fit: BoxFit.cover),
+          ),
+          GestureDetector(
+            onTap: () => Get.to(() => const LedgerView()),
+            child: Image.asset('assets/images/business_ledger_at_a_glance_2.png', width: double.infinity, fit: BoxFit.cover),
           ),
         ],
       ),

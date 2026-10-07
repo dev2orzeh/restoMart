@@ -2,7 +2,7 @@ import { useRef } from 'react';
 import { Download, Printer, Package } from 'lucide-react';
 import html2canvas from 'html2canvas-pro';
 
-export default function InvoiceTemplate({ order, onClose }) {
+export default function InvoiceTemplate({ order, ledgerAccount, onClose }) {
   const invoiceRef = useRef(null);
 
   const handleDownload = async () => {
@@ -24,9 +24,9 @@ export default function InvoiceTemplate({ order, onClose }) {
     window.print();
   };
 
-  const subtotal = order.items.reduce((sum, item) => sum + item.qty * item.price, 0);
+  const subtotal = (order.items || []).reduce((sum, item) => sum + (item.qty || item.quantity || 1) * (item.price || 0), 0);
   const shipping = 0;
-  const total = subtotal + shipping;
+  const total = parseFloat(order.total || subtotal);
 
   return (
     <div>
@@ -68,28 +68,29 @@ export default function InvoiceTemplate({ order, onClose }) {
             </div>
             <div className="text-right">
               <h2 className="text-3xl font-bold text-[#25258F] mb-1">INVOICE</h2>
-              <p className="text-base text-gray-500">INV-{order.id.split('-').pop()}</p>
+              <p className="text-base text-gray-500">INV-{order.id.toString().split('-').pop()}</p>
             </div>
           </div>
 
           {/* Info Grid */}
-          <div className="grid grid-cols-2 gap-8 mb-12">
+          <div className="grid grid-cols-2 gap-8 mb-10">
             <div>
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Bill To</p>
-              <p className="text-base font-bold text-gray-800">{order.customer}</p>
-              <p className="text-sm text-gray-500 mt-1">{order.email}</p>
-              <p className="text-sm text-gray-500">{order.phone}</p>
+              <p className="text-base font-bold text-gray-800">{order.customer || 'Customer'}</p>
+              <p className="text-sm text-gray-500 mt-1">{order.email || 'N/A'}</p>
+              <p className="text-sm text-gray-500">{order.phone || 'N/A'}</p>
+              {order.address && <p className="text-sm text-gray-500 mt-1">{order.address}</p>}
             </div>
             <div className="text-right">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Invoice Details</p>
               <p className="text-sm text-gray-600 mb-1"><span className="font-semibold text-gray-800 mr-2">Date:</span> {order.date}</p>
               <p className="text-sm text-gray-600 mb-1"><span className="font-semibold text-gray-800 mr-2">Order ID:</span> {order.id}</p>
-              <p className="text-sm text-gray-600"><span className="font-semibold text-gray-800 mr-2">Payment:</span> {order.payment}</p>
+              <p className="text-sm text-gray-600 font-bold text-[#25258F]"><span className="font-semibold text-gray-800 mr-2">Payment Method:</span> {order.payment || order.paymentMethod || 'Cash on delivery'}</p>
             </div>
           </div>
 
           {/* Items Table */}
-          <table className="w-full mb-12">
+          <table className="w-full mb-10">
             <thead>
               <tr className="border-b-2 border-[#25258F]">
                 <th className="text-left py-4 text-xs font-bold text-gray-500 uppercase tracking-wider w-16">#</th>
@@ -100,21 +101,25 @@ export default function InvoiceTemplate({ order, onClose }) {
               </tr>
             </thead>
             <tbody>
-              {order.items.map((item, i) => (
-                <tr key={i} className="border-b border-gray-100">
-                  <td className="py-5 text-sm text-gray-500">{i + 1}</td>
-                  <td className="py-5 text-sm font-semibold text-gray-800">{item.name}</td>
-                  <td className="py-5 text-sm text-gray-600 text-center font-medium">x{item.qty}</td>
-                  <td className="py-5 text-sm text-gray-600 text-right">₨ {item.price.toLocaleString()}</td>
-                  <td className="py-5 text-sm font-bold text-gray-800 text-right">₨ {(item.qty * item.price).toLocaleString()}</td>
-                </tr>
-              ))}
+              {(order.items || []).map((item, i) => {
+                const q = item.qty || item.quantity || 1;
+                const p = item.price || 0;
+                return (
+                  <tr key={i} className="border-b border-gray-100">
+                    <td className="py-4 text-sm text-gray-500">{i + 1}</td>
+                    <td className="py-4 text-sm font-semibold text-gray-800">{item.name}</td>
+                    <td className="py-4 text-sm text-gray-600 text-center font-medium">x{q}</td>
+                    <td className="py-4 text-sm text-gray-600 text-right">₨ {p.toLocaleString()}</td>
+                    <td className="py-4 text-sm font-bold text-gray-800 text-right">₨ {(q * p).toLocaleString()}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
 
-          {/* Totals */}
-          <div className="flex justify-end">
-            <div className="w-72 space-y-3">
+          {/* Totals & Summary */}
+          <div className="flex justify-end mb-8">
+            <div className="w-72 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500 font-medium">Subtotal</span>
                 <span className="font-semibold text-gray-800">₨ {subtotal.toLocaleString()}</span>
@@ -123,17 +128,69 @@ export default function InvoiceTemplate({ order, onClose }) {
                 <span className="text-gray-500 font-medium">Shipping</span>
                 <span className="font-semibold text-gray-800">₨ {shipping.toLocaleString()}</span>
               </div>
-              <div className="border-t-2 border-[#25258F] pt-3 mt-3 flex justify-between items-center">
-                <span className="text-lg font-bold text-[#25258F]">Total</span>
+              <div className="border-t-2 border-[#25258F] pt-3 mt-2 flex justify-between items-center">
+                <span className="text-lg font-bold text-[#25258F]">Order Total</span>
                 <span className="text-xl font-bold text-[#25258F]">₨ {total.toLocaleString()}</span>
               </div>
             </div>
           </div>
 
+          {/* Payment Method & Customer Ledger (Business Khata) Summary Box */}
+          <div className="grid grid-cols-2 gap-6 p-5 bg-gray-50 rounded-xl border border-gray-200">
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Payment Details</p>
+              <p className="text-sm text-gray-700">
+                <span className="font-semibold text-gray-900">Payment Method:</span> {order.payment || order.paymentMethod || 'Cash on delivery'}
+              </p>
+              <p className="text-sm text-gray-700 mt-1">
+                <span className="font-semibold text-gray-900">Order Status:</span>{' '}
+                <span className="inline-block px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800 uppercase">
+                  {order.status || 'Pending'}
+                </span>
+              </p>
+            </div>
+
+            <div className="border-l border-gray-200 pl-6">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Customer Business Khata (Ledger)</p>
+              {ledgerAccount ? (
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total Purchased:</span>
+                    <span className="font-semibold text-gray-800">₨ {(ledgerAccount.totalDebit || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total Payments Paid:</span>
+                    <span className="font-semibold text-emerald-700">₨ {(ledgerAccount.totalCredit || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-gray-200 font-bold">
+                    <span className="text-gray-900">
+                      {(ledgerAccount.balance || 0) > 0 
+                        ? "Outstanding Balance (Debt):" 
+                        : (ledgerAccount.balance || 0) < 0 
+                          ? "Advance Credit / Surplus:" 
+                          : "Outstanding Balance:"}
+                    </span>
+                    <span className={(ledgerAccount.balance || 0) > 0 ? "text-red-600" : "text-emerald-600"}>
+                      ₨ {Math.abs(ledgerAccount.balance || 0).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Outstanding Balance:</span>
+                    <span className="font-bold text-emerald-600">₨ 0.00</span>
+                  </div>
+                  <p className="text-xs text-gray-400">Account clear / no active debt.</p>
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Footer */}
-          <div className="mt-24 pt-8 border-t border-gray-200 text-center">
-            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-2">Thank you for shopping with RestoMart!</p>
-            <p className="text-xs text-gray-500">restomart.pk • Lahore, Pakistan • +92 325 8019294</p>
+          <div className="mt-auto pt-8 border-t border-gray-200 text-center">
+            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest mb-1">Thank you for shopping with RestoMart!</p>
+            <p className="text-xs text-gray-500">restomart.pk • Lahore, Pakistan • 0321-1655556 / 0321-0655555</p>
           </div>
         </div>
       </div>

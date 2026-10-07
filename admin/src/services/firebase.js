@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, doc, updateDoc, query, orderBy, runTransaction, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, updateDoc, query, orderBy, runTransaction, serverTimestamp, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCWg-_YHLqGPzNBhR7ovpAYZKRxeWTFsfw",
@@ -38,14 +38,153 @@ export const subscribeToOrders = (callback) => {
 // Helper to update an order's status
 export const updateOrderStatus = async (orderId, newStatus) => {
   const orderRef = doc(db, 'orders', orderId);
-  await updateDoc(orderRef, {
-    status: newStatus
-  });
+  await updateDoc(orderRef, { status: newStatus });
 };
 
 // ── Ledger Specific Functions ──
 
-export const subscribeToLedgerAccounts = (callback) => {
+export const syncLedgerAccountsWithOrders = async () => {
+  try {
+    const ordersSnap = await getDocs(collection(db, 'orders'));
+    const accountsSnap = await getDocs(collection(db, 'ledger_accounts'));
+
+    const allOrders = ordersSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const allAccounts = accountsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const accountMap = {};
+    allAccounts.forEach(acc => {
+      accountMap[acc.id] = acc;
+      if (acc.customerEmail) accountMap[acc.customerEmail.toLowerCase().trim()] = acc;
+      if (acc.customerPhone) accountMap[acc.customerPhone.trim()] = acc;
+    });
+
+    const customerOrders = {};
+    allOrders.forEach(order => {
+      const status = (order.status || '').toLowerCase().trim();
+      if (status === 'cancelled') return;
+
+      const uid = order.userId;
+      const email = (order.email || order.billing?.email || '').toLowerCase().trim();
+      const phone = (order.phone || order.billing?.phone || '').trim();
+
+      let targetAccountId = null;
+      if (uid && accountMap[uid]) {
+        targetAccountId = accountMap[uid].id;
+      } else if (email && accountMap[email]) {
+        targetAccountId = accountMap[email].id;
+      } else if (phone && accountMap[phone]) {
+        targetAccountId = accountMap[phone].id;
+      }
+
+      if (targetAccountId) {
+        if (!customerOrders[targetAccountId]) {
+          customerOrders[targetAccountId] = [];
+        }
+        customerOrders[targetAccountId].push({
+          id: order.id,
+          total: parseFloat(order.total) || 0,
+          payment: order.payment || order.paymentMethod || 'Cash on delivery',
+          date: order.date
+        });
+      }
+    });
+
+    for (const accDoc of accountsSnap.docs) {
+      const accId = accDoc.id;
+      const validOrders = customerOrders[accId] || [];
+
+      // 1. Fetch all transactions for this account
+      const txSnap = await getDocs(collection(db, 'ledger_accounts', accId, 'transactions'));
+      
+      const seenOrderDebits = new Map();
+      const docsToDelete = [];
+      let totalActualCredit = 0;
+
+      for (const txDoc of txSnap.docs) {
+        const data = txDoc.data();
+        const pMethod = (data.paymentMethod || '').toString().toLowerCase();
+        const desc = (data.description || '').toString();
+
+        // Remove legacy order cancellation reversals so Total Paid (Credit) isn't artificially inflated
+        if (pMethod === 'system_reversal' || desc.includes('Reversal for Cancelled Order')) {
+          docsToDelete.push(txDoc.ref);
+          continue;
+        }
+
+        // Sum actual payments received from customer
+        if (data.type === 'credit') {
+          totalActualCredit += parseFloat(data.amount || 0);
+        }
+
+        // Handle debit transactions (orders)
+        if (data.type === 'debit') {
+          const rawOId = (data.orderId || desc || '').toString().replaceAll('#', '').replace('Order', '').trim();
+          
+          // Check if order is cancelled
+          const matchingOrder = allOrders.find(o => o.id.toString().trim() === rawOId);
+          const isCancelled = matchingOrder && (matchingOrder.status || '').toLowerCase() === 'cancelled';
+
+          if (isCancelled) {
+            docsToDelete.push(txDoc.ref);
+          } else if (seenOrderDebits.has(rawOId)) {
+            // Duplicate debit found
+            docsToDelete.push(txDoc.ref);
+          } else {
+            seenOrderDebits.set(rawOId, txDoc.id);
+          }
+        }
+      }
+
+      // Execute transaction document cleanups
+      for (const refToDelete of docsToDelete) {
+        try {
+          await deleteDoc(refToDelete);
+        } catch (delErr) {
+          console.error("Failed to delete stale transaction:", delErr);
+        }
+      }
+
+      // 2. Recalculate unique total debit, credit, and balance
+      const calculatedDebit = Math.round(validOrders.reduce((sum, o) => sum + (parseFloat(o.total) || 0), 0) * 100) / 100;
+      totalActualCredit = Math.round(totalActualCredit * 100) / 100;
+      const calculatedBalance = Math.round((calculatedDebit - totalActualCredit) * 100) / 100;
+
+      await updateDoc(doc(db, 'ledger_accounts', accId), {
+        totalDebit: calculatedDebit,
+        totalCredit: totalActualCredit,
+        balance: calculatedBalance,
+        updatedAt: serverTimestamp()
+      });
+
+      // 3. Ensure active non-cancelled orders have a debit transaction
+      for (const ord of validOrders) {
+        const cleanOrdId = ord.id.toString().trim();
+        if (!seenOrderDebits.has(cleanOrdId)) {
+          const cleanDocId = `debit_${cleanOrdId.replaceAll('#', '')}`;
+          const newTxRef = doc(db, 'ledger_accounts', accId, 'transactions', cleanDocId);
+          await setDoc(newTxRef, {
+            type: 'debit',
+            amount: parseFloat(ord.total || 0),
+            description: `Order #${ord.id}`,
+            orderId: ord.id,
+            paymentMethod: ord.payment || 'Cash on delivery',
+            date: serverTimestamp(),
+            recordedBy: 'system'
+          }, { merge: true });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Ledger auto-sync error:", err);
+  }
+};
+
+export const subscribeToLedgerAccounts = (callback, onSyncComplete) => {
+  // Trigger background sync for missing order debits
+  syncLedgerAccountsWithOrders().finally(() => {
+    if (onSyncComplete) onSyncComplete();
+  });
+
   const q = query(collection(db, 'ledger_accounts'), orderBy('updatedAt', 'desc'));
   return onSnapshot(q, (snapshot) => {
     const accounts = [];
@@ -63,7 +202,7 @@ export const fetchLedgerTransactions = async (uid) => {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-export const recordLedgerPayment = async (uid, amount, paymentMethod, note) => {
+export const recordLedgerPayment = async (uid, amount, paymentMethod, note, orderId = null) => {
   const docRef = doc(db, 'ledger_accounts', uid);
   
   await runTransaction(db, async (transaction) => {
@@ -73,22 +212,31 @@ export const recordLedgerPayment = async (uid, amount, paymentMethod, note) => {
     }
     
     const data = docSnap.data();
-    const currentDebit = data.totalDebit || 0;
-    const currentCredit = data.totalCredit || 0;
+    const currentDebit = parseFloat(data.totalDebit || 0);
+    const currentCredit = parseFloat(data.totalCredit || 0);
+    const payAmount = Math.round(parseFloat(amount) * 100) / 100;
     
-    const newCredit = currentCredit + parseFloat(amount);
-    const newBalance = currentDebit - newCredit;
+    const newCredit = Math.round((currentCredit + payAmount) * 100) / 100;
+    const newBalance = Math.round((currentDebit - newCredit) * 100) / 100;
     
+    let descriptionText = note || 'Payment Received';
+    if (orderId && orderId.trim()) {
+      const cleanOrderId = orderId.trim();
+      descriptionText = descriptionText.includes(`Order #${cleanOrderId}`)
+        ? descriptionText
+        : `${descriptionText} (Order #${cleanOrderId})`;
+    }
+
     // 1. Create Transaction
     const newTxRef = doc(collection(docRef, 'transactions'));
     transaction.set(newTxRef, {
       type: 'credit',
-      amount: parseFloat(amount),
-      description: note || 'Payment Received',
+      amount: payAmount,
+      description: descriptionText,
       paymentMethod: paymentMethod,
       date: serverTimestamp(),
       recordedBy: 'admin',
-      orderId: null
+      orderId: orderId && orderId.trim() ? orderId.trim() : null
     });
     
     // 2. Update Account
@@ -97,5 +245,57 @@ export const recordLedgerPayment = async (uid, amount, paymentMethod, note) => {
       balance: newBalance,
       updatedAt: serverTimestamp()
     });
+
+    // 3. Create real-time notification document for customer app
+    const notifRef = doc(collection(db, 'users', uid, 'notifications'));
+    transaction.set(notifRef, {
+      title: 'Payment Recorded! 💰',
+      description: `We received your payment of Rs. ${payAmount.toLocaleString()} (${paymentMethod}). New balance: Rs. ${newBalance.toLocaleString()}.`,
+      type: 'ledger_payment',
+      action: 'ledger_view',
+      createdAt: serverTimestamp(),
+      isRead: false,
+      amount: payAmount,
+      newBalance: newBalance
+    });
+  });
+};
+
+export const subscribeToAllTransactions = (callback) => {
+  const qAccounts = collection(db, 'ledger_accounts');
+  return onSnapshot(qAccounts, async (snapshot) => {
+    const allTxns = [];
+    for (const userDoc of snapshot.docs) {
+      const userData = userDoc.data();
+      try {
+        const txSnap = await getDocs(query(collection(db, 'ledger_accounts', userDoc.id, 'transactions'), orderBy('date', 'desc')));
+        txSnap.forEach((txDoc) => {
+          const tx = txDoc.data();
+          let formattedDate = 'N/A';
+          if (tx.date) {
+            try {
+              formattedDate = tx.date.toDate ? tx.date.toDate().toLocaleString() : new Date(tx.date).toLocaleString();
+            } catch (e) {
+              formattedDate = 'Recent';
+            }
+          }
+          allTxns.push({
+            id: `TXN-${txDoc.id.slice(0, 8).toUpperCase()}`,
+            customer: userData.customerName || userData.customerEmail || 'Customer',
+            email: userData.customerEmail || 'N/A',
+            amount: parseFloat(tx.amount || 0),
+            type: tx.type || 'credit',
+            method: tx.paymentMethod || 'Cash',
+            description: tx.description || (tx.type === 'credit' ? 'Payment Received' : 'Order Debit'),
+            date: formattedDate,
+            orderId: tx.orderId || '-',
+            recordedBy: tx.recordedBy || 'admin'
+          });
+        });
+      } catch (err) {
+        console.error("Error fetching transactions for user", userDoc.id, err);
+      }
+    }
+    callback(allTxns);
   });
 };

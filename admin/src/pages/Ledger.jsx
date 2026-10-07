@@ -18,13 +18,16 @@ import {
   DialogActions,
   TextField,
   MenuItem,
-  Collapse
+  Collapse,
+  CircularProgress
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import PaymentIcon from '@mui/icons-material/Payment';
-import { subscribeToLedgerAccounts, fetchLedgerTransactions, recordLedgerPayment } from '../services/firebase';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import { subscribeToLedgerAccounts, fetchLedgerTransactions, recordLedgerPayment, syncLedgerAccountsWithOrders } from '../services/firebase';
 import { format } from 'date-fns';
+import Loader from '../components/shared/Loader';
 
 function Row(props) {
   const { row, onRecordPayment } = props;
@@ -66,7 +69,11 @@ function Row(props) {
         </TableCell>
         <TableCell align="right">
           <Chip 
-            label={`Rs. ${(row.balance || 0).toLocaleString()}`} 
+            label={(row.balance || 0) > 0 
+              ? `Rs. ${(row.balance || 0).toLocaleString()} (Debt)` 
+              : (row.balance || 0) < 0 
+                ? `Rs. ${Math.abs(row.balance || 0).toLocaleString()} (Advance)` 
+                : `Rs. 0 (Cleared)`} 
             color={(row.balance || 0) > 0 ? "error" : "success"}
             variant={(row.balance || 0) > 0 ? "filled" : "outlined"}
             sx={{ fontWeight: 'bold' }}
@@ -140,24 +147,35 @@ function Row(props) {
 
 export default function Ledger() {
   const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState(null);
   
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState('Cash');
   const [note, setNote] = useState('');
+  const [orderId, setOrderId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = subscribeToLedgerAccounts(setAccounts);
+    setLoading(true);
+    const unsubscribe = subscribeToLedgerAccounts(
+      (accs) => {
+        setAccounts(accs);
+      },
+      () => {
+        setLoading(false);
+      }
+    );
     return () => unsubscribe();
   }, []);
 
   const handleOpenPayment = (account) => {
     setSelectedAccount(account);
-    setAmount(account.balance > 0 ? account.balance.toString() : '');
+    setAmount('');
     setMethod('Cash');
     setNote('');
+    setOrderId('');
     setPaymentModalOpen(true);
   };
 
@@ -171,7 +189,7 @@ export default function Ledger() {
     
     setIsSubmitting(true);
     try {
-      await recordLedgerPayment(selectedAccount.id, amount, method, note);
+      await recordLedgerPayment(selectedAccount.id, amount, method, note, orderId);
       handleClosePayment();
     } catch (err) {
       console.error("Failed to record payment", err);
@@ -180,42 +198,72 @@ export default function Ledger() {
     setIsSubmitting(false);
   };
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncLedger = async () => {
+    setIsSyncing(true);
+    try {
+      await syncLedgerAccountsWithOrders();
+    } catch (e) {
+      console.error(e);
+    }
+    setIsSyncing(false);
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" fontWeight="bold">
-          Business Khata (Ledger)
-        </Typography>
+        <div>
+          <Typography variant="h4" fontWeight="bold">
+            Business Khata (Ledger)
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            Real-time customer order debits, payments, and outstanding balances
+          </Typography>
+        </div>
+        <Button
+          variant="outlined"
+          color="primary"
+          startIcon={<RefreshIcon className={isSyncing ? "animate-spin" : ""} />}
+          onClick={handleSyncLedger}
+          disabled={isSyncing}
+        >
+          {isSyncing ? "Syncing Khata..." : "Sync Orders to Khata"}
+        </Button>
       </Box>
 
-      <TableContainer component={Paper} elevation={3}>
-        <Table aria-label="collapsible table">
-          <TableHead sx={{ backgroundColor: 'primary.main' }}>
-            <TableRow>
-              <TableCell />
-              <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Customer</TableCell>
-              <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Total Orders (Debit)</TableCell>
-              <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Total Paid (Credit)</TableCell>
-              <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Outstanding Balance</TableCell>
-              <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {accounts.map((account) => (
-              <Row key={account.id} row={account} onRecordPayment={handleOpenPayment} />
-            ))}
-            {accounts.length === 0 && (
+      {loading ? (
+        <Loader message="Syncing Business Khata & calculating balances..." />
+      ) : (
+        <TableContainer component={Paper} elevation={3}>
+          <Table aria-label="collapsible table">
+            <TableHead sx={{ backgroundColor: 'primary.main' }}>
               <TableRow>
-                <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
-                  <Typography variant="body1" color="text.secondary">
-                    No ledger accounts found. Customers need to place at least one order to appear here.
-                  </Typography>
-                </TableCell>
+                <TableCell />
+                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Customer</TableCell>
+                <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Total Orders (Debit)</TableCell>
+                <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Total Paid (Credit)</TableCell>
+                <TableCell align="right" sx={{ color: 'white', fontWeight: 'bold' }}>Outstanding Balance</TableCell>
+                <TableCell align="center" sx={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
               </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </TableContainer>
+            </TableHead>
+            <TableBody>
+              {accounts.map((account) => (
+                <Row key={account.id} row={account} onRecordPayment={handleOpenPayment} />
+              ))}
+              {accounts.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                    <Typography variant="body1" color="text.secondary">
+                      No ledger accounts found. Customers need to place at least one order to appear here.
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
 
       {/* Payment Dialog */}
       <Dialog open={paymentModalOpen} onClose={handleClosePayment} maxWidth="sm" fullWidth>
@@ -234,6 +282,15 @@ export default function Ledger() {
               onChange={(e) => setAmount(e.target.value)}
               fullWidth
               autoFocus
+            />
+
+            <TextField
+              label="Order # (Optional)"
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+              fullWidth
+              placeholder="e.g. RM-35743 or 35743"
+              helperText="Link payment to a specific order number (Optional)"
             />
             
             <TextField

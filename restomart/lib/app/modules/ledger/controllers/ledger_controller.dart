@@ -32,9 +32,9 @@ class LedgerController extends GetxController {
     _firestore.collection('ledger_accounts').doc(uid).snapshots().listen((doc) {
       if (doc.exists) {
         final data = doc.data()!;
-        totalDebit.value = (data['totalDebit'] ?? 0.0) as double;
-        totalCredit.value = (data['totalCredit'] ?? 0.0) as double;
-        balance.value = (data['balance'] ?? 0.0) as double;
+        totalDebit.value = (data['totalDebit'] as num?)?.toDouble() ?? 0.0;
+        totalCredit.value = (data['totalCredit'] as num?)?.toDouble() ?? 0.0;
+        balance.value = (data['balance'] as num?)?.toDouble() ?? 0.0;
       }
     });
 
@@ -48,14 +48,23 @@ class LedgerController extends GetxController {
         .snapshots()
         .listen((snapshot) {
       
-      // Check for new payments (only if this isn't the first load)
+      // Check for new ledger entries (only if this isn't the first load)
       if (!isLoading.value) {
         for (var change in snapshot.docChanges) {
           if (change.type == DocumentChangeType.added) {
             final data = change.doc.data()!;
-            if (data['type'] == 'credit') {
-              final amount = (data['amount'] ?? 0.0) as double;
-              PushNotificationService.showLedgerPaymentNotification(amount, balance.value);
+            final paymentMethod = data['paymentMethod']?.toString();
+            final type = data['type']?.toString();
+            final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+            final isReversal = paymentMethod == 'system_reversal';
+
+            if (!isReversal) {
+              if (type == 'credit') {
+                PushNotificationService.showLedgerPaymentNotification(amount, balance.value);
+              } else if (type == 'debit') {
+                final desc = data['description']?.toString() ?? 'Order Debit';
+                PushNotificationService.showLedgerDebitNotification(amount, balance.value, desc);
+              }
             }
           }
         }

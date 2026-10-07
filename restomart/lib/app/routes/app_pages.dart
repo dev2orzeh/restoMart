@@ -1,8 +1,3 @@
-/// GetX page registration.
-///
-/// Maps route names to their screens and bindings.
-/// New screens are added here as they are built.
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'app_routes.dart';
 import '../modules/splash/bindings/splash_binding.dart';

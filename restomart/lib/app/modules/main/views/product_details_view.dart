@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../../core/constants/app_colors.dart';
@@ -112,7 +113,7 @@ class _ProductDetailsViewState extends State<ProductDetailsView> {
                                 child: images[i].isEmpty
                                   ? const Icon(Icons.image_not_supported, color: Colors.grey)
                                   : images[i].startsWith('http')
-                                    ? Image.network(images[i], fit: BoxFit.contain, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey))
+                                    ? CachedNetworkImage(imageUrl: images[i], fit: BoxFit.contain, placeholder: (c,u) => const SizedBox(), errorWidget: (c,u,e) => const Icon(Icons.broken_image, color: Colors.grey))
                                     : Image.asset(images[i], fit: BoxFit.contain, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey)),
                               );
                             },
@@ -235,7 +236,7 @@ class _ProductDetailsViewState extends State<ProductDetailsView> {
                                                 child: images[i].isEmpty
                                                   ? const Icon(Icons.image_not_supported, color: Colors.grey)
                                                   : images[i].startsWith('http')
-                                                    ? Image.network(images[i], fit: BoxFit.contain, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey))
+                                                    ? CachedNetworkImage(imageUrl: images[i], fit: BoxFit.contain, placeholder: (c,u) => const SizedBox(), errorWidget: (c,u,e) => const Icon(Icons.broken_image, color: Colors.grey))
                                                     : Image.asset(images[i], fit: BoxFit.contain, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey)),
                                               );
                                             },
@@ -258,7 +259,7 @@ class _ProductDetailsViewState extends State<ProductDetailsView> {
                                   child: images[index].isEmpty
                                     ? const Icon(Icons.image_not_supported, color: Colors.grey)
                                     : images[index].startsWith('http')
-                                      ? Image.network(images[index], fit: BoxFit.contain, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey))
+                                      ? CachedNetworkImage(imageUrl: images[index], fit: BoxFit.contain, placeholder: (c,u) => const SizedBox(), errorWidget: (c,u,e) => const Icon(Icons.broken_image, color: Colors.grey))
                                       : Image.asset(images[index], fit: BoxFit.contain, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey)),
                                 ),
                               );
@@ -306,31 +307,30 @@ class _ProductDetailsViewState extends State<ProductDetailsView> {
                               ),
                             ],
                           ),
-                          // Minimal Call & WhatsApp Buttons
-                          Row(
+                          // Contact & Social Media
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              InkWell(
-                                onTap: () => _launchUrl('tel:+923258019294'),
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.withValues(alpha: 0.1),
-                                    shape: BoxShape.circle,
+                              Row(
+                                children: [
+                                  InkWell(
+                                    onTap: () => _launchUrl('tel:+923211655556'),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(color: Colors.blue.withValues(alpha: 0.1), shape: BoxShape.circle),
+                                      child: const FaIcon(FontAwesomeIcons.phone, color: Colors.blue, size: 16),
+                                    ),
                                   ),
-                                  child: const FaIcon(FontAwesomeIcons.phone, color: Colors.blue, size: 20),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              InkWell(
-                                onTap: () => _launchUrl('https://wa.me/923258019294'),
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.withValues(alpha: 0.1),
-                                    shape: BoxShape.circle,
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    onTap: () => _launchUrl('https://wa.me/923211655556'),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), shape: BoxShape.circle),
+                                      child: const FaIcon(FontAwesomeIcons.whatsapp, color: Colors.green, size: 16),
+                                    ),
                                   ),
-                                  child: const FaIcon(FontAwesomeIcons.whatsapp, color: Colors.green, size: 20),
-                                ),
+                                ],
                               ),
                             ],
                           ),
@@ -445,6 +445,7 @@ class _ProductDetailsViewState extends State<ProductDetailsView> {
                                     product.name,
                                     product.price.toDouble(),
                                     1,
+                                    originalPrice: product.originalPrice?.toDouble() ?? product.price.toDouble(),
                                   );
                                 },
                               );
@@ -589,6 +590,7 @@ class _ProductDetailsViewState extends State<ProductDetailsView> {
                               widget.name,
                               widget.salePrice,
                               quantity,
+                              originalPrice: widget.originalPrice,
                             );
                             Get.snackbar(
                               'Added to Cart',

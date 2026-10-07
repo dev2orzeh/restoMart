@@ -12,6 +12,8 @@ class LedgerService {
     required String email,
     required String phone,
   }) async {
+    if (uid.isEmpty || uid == 'guest') return;
+    
     final docRef = _firestore.collection('ledger_accounts').doc(uid);
     final snapshot = await docRef.get();
     
@@ -37,81 +39,126 @@ class LedgerService {
     required double amount,
     required String paymentMethod,
   }) async {
+    if (uid.isEmpty || uid == 'guest') return;
+
     final docRef = _firestore.collection('ledger_accounts').doc(uid);
 
     await _firestore.runTransaction((transaction) async {
       final snapshot = await transaction.get(docRef);
-      if (!snapshot.exists) {
-        throw Exception("Ledger account not found for uid: $uid");
-      }
-
-      final currentDebit = (snapshot.data()?['totalDebit'] ?? 0.0) as double;
-      final currentCredit = (snapshot.data()?['totalCredit'] ?? 0.0) as double;
       
-      final newDebit = currentDebit + amount;
-      final newBalance = newDebit - currentCredit;
+      double currentDebit = 0.0;
+      double currentCredit = 0.0;
+      
+      if (!snapshot.exists) {
+        final currentUser = FirebaseAuth.instance.currentUser;
+        transaction.set(docRef, {
+          'customerName': currentUser?.displayName ?? 'Customer',
+          'customerEmail': currentUser?.email ?? '',
+          'customerPhone': currentUser?.phoneNumber ?? '',
+          'totalDebit': 0.0,
+          'totalCredit': 0.0,
+          'balance': 0.0,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      } else {
+        final data = snapshot.data() ?? {};
+        currentDebit = (data['totalDebit'] as num?)?.toDouble() ?? 0.0;
+        currentCredit = (data['totalCredit'] as num?)?.toDouble() ?? 0.0;
+      }
+      
+      final cleanAmount = double.parse(amount.toStringAsFixed(2));
+      final cleanOrderId = orderId.replaceAll('#', '').trim();
+      final txnDocId = 'debit_$cleanOrderId';
+      final txnRef = docRef.collection('transactions').doc(txnDocId);
+      final existingTxn = await transaction.get(txnRef);
 
-      // 1. Add transaction document
-      final txnRef = docRef.collection('transactions').doc();
-      transaction.set(txnRef, {
-        'type': 'debit',
-        'amount': amount,
-        'description': 'Order #$orderId',
-        'orderId': orderId,
-        'date': FieldValue.serverTimestamp(),
-        'recordedBy': 'system',
-        'paymentMethod': paymentMethod, // e.g. "Cash on delivery"
-      });
+      // Only record debit if not already recorded for this order
+      if (!existingTxn.exists) {
+        final newDebit = double.parse((currentDebit + cleanAmount).toStringAsFixed(2));
+        final newBalance = double.parse((newDebit - currentCredit).toStringAsFixed(2));
 
-      // 2. Update totals
-      transaction.update(docRef, {
-        'totalDebit': newDebit,
-        'balance': newBalance,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+        // 1. Add transaction document
+        transaction.set(txnRef, {
+          'type': 'debit',
+          'amount': cleanAmount,
+          'description': 'Order #$orderId',
+          'orderId': orderId,
+          'date': FieldValue.serverTimestamp(),
+          'recordedBy': 'system',
+          'paymentMethod': paymentMethod,
+        });
+
+        // 2. Update totals
+        transaction.update(docRef, {
+          'totalDebit': newDebit,
+          'balance': newBalance,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
     });
     
     log('LEDGER: Recorded debit of $amount for order $orderId');
   }
 
-  /// Reverses an order if it is cancelled.
+  /// Reverses/removes an order debit if it is cancelled.
   static Future<void> reverseOrderDebit({
     required String uid,
     required String orderId,
     required double amount,
   }) async {
+    if (uid.isEmpty || uid == 'guest') return;
+
     final docRef = _firestore.collection('ledger_accounts').doc(uid);
+    final cleanOrderId = orderId.replaceAll('#', '').trim();
+    final txnDocId = 'debit_$cleanOrderId';
 
-    await _firestore.runTransaction((transaction) async {
-      final snapshot = await transaction.get(docRef);
-      if (!snapshot.exists) return;
+    try {
+      // 1. Delete debit transaction doc if exists
+      final txnRef = docRef.collection('transactions').doc(txnDocId);
+      final txnSnap = await txnRef.get();
+      if (txnSnap.exists) {
+        await txnRef.delete();
+      }
 
-      final currentDebit = (snapshot.data()?['totalDebit'] ?? 0.0) as double;
-      final currentCredit = (snapshot.data()?['totalCredit'] ?? 0.0) as double;
-      
-      final newCredit = currentCredit + amount;
-      final newBalance = currentDebit - newCredit;
+      // 2. Delete any matching debit or legacy reversal docs for this order
+      final allTxns = await docRef.collection('transactions').get();
+      for (var doc in allTxns.docs) {
+        final d = doc.data();
+        final rawOId = (d['orderId'] ?? d['description'] ?? '').toString().replaceAll('#', '').replaceFirst('Order', '').trim();
+        final pMethod = (d['paymentMethod'] ?? '').toString().toLowerCase();
+        if (rawOId == cleanOrderId || d['orderId'] == orderId) {
+          if (d['type'] == 'debit' || pMethod == 'system_reversal') {
+            await doc.reference.delete();
+          }
+        }
+      }
 
-      // 1. Add transaction document
-      final txnRef = docRef.collection('transactions').doc();
-      transaction.set(txnRef, {
-        'type': 'credit',
-        'amount': amount,
-        'description': 'Reversal for Cancelled Order #$orderId',
-        'orderId': orderId,
-        'date': FieldValue.serverTimestamp(),
-        'recordedBy': 'system',
-        'paymentMethod': 'system_reversal',
-      });
+      // 3. Recalculate remaining total debit
+      final remainingDebits = await docRef.collection('transactions').where('type', isEqualTo: 'debit').get();
+      double recalculatedDebit = 0.0;
+      for (var doc in remainingDebits.docs) {
+        final amt = (doc.data()['amount'] as num?)?.toDouble() ?? 0.0;
+        recalculatedDebit += amt;
+      }
+      recalculatedDebit = double.parse(recalculatedDebit.toStringAsFixed(2));
 
-      // 2. Update totals (we add to credit to reverse the debit, keeping history intact)
-      transaction.update(docRef, {
-        'totalCredit': newCredit,
-        'balance': newBalance,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    });
-    
-    log('LEDGER: Reversed debit of $amount for cancelled order $orderId');
+      final accSnap = await docRef.get();
+      if (accSnap.exists) {
+        final data = accSnap.data() ?? {};
+        final totalCredit = (data['totalCredit'] as num?)?.toDouble() ?? 0.0;
+        final newBalance = double.parse((recalculatedDebit - totalCredit).toStringAsFixed(2));
+
+        await docRef.update({
+          'totalDebit': recalculatedDebit,
+          'balance': newBalance,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      log('LEDGER: Successfully removed debit for cancelled order $orderId');
+    } catch (e) {
+      log('LEDGER: Error reversing order debit: $e');
+    }
   }
 }

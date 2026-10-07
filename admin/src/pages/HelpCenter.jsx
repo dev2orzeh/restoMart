@@ -83,13 +83,13 @@ export default function HelpCenter() {
                 </div>
               </a>
 
-              <a href="tel:+923258019294" className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary-300 hover:bg-primary-50 transition-colors group">
+              <a href="tel:03211655556" className="flex items-center gap-3 p-3 rounded-xl border border-border hover:border-primary-300 hover:bg-primary-50 transition-colors group">
                 <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center text-green-500 group-hover:bg-green-100 transition-colors">
                   <Phone className="w-5 h-5" />
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-text-primary">Call Us</p>
-                  <p className="text-xs text-text-secondary">+92 325 8019294</p>
+                  <p className="text-xs text-text-secondary">0321-1655556 • 0321-0655555</p>
                 </div>
               </a>
 

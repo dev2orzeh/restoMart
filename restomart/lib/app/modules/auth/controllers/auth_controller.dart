@@ -5,23 +5,26 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../../routes/app_routes.dart';
 import '../../cart/controllers/cart_controller.dart';
 import '../../orders/controllers/orders_controller.dart';
+import '../../checkout/controllers/address_controller.dart';
 import '../../../core/services/woocommerce_api_service.dart';
+import '../../../core/services/ledger_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:convert';
+import 'dart:io';
 
 class AuthController extends GetxController {
-  // ── Form Controllers ──────────────────────────────────────────────
-
-  // Login
   final loginEmailController = TextEditingController();
   final loginPasswordController = TextEditingController();
   final loginFormKey = GlobalKey<FormState>();
 
-  // Register
   final registerNameController = TextEditingController();
   final registerEmailController = TextEditingController();
   final registerPhoneController = TextEditingController();
@@ -58,11 +61,12 @@ class AuthController extends GetxController {
   final isLoading = false.obs;
 
   // ── Profile State ──────────────────────────────────────────────────
-  final userName = 'Karachi Kitchen'.obs;
-  final userEmail = 'admin@karachikitchen.com'.obs;
-  final userPhone = '+92 300 1234567'.obs;
-  final userAddress = 'DHA Phase 6, Lahore'.obs;
+  final userName = ''.obs;
+  final userEmail = ''.obs;
+  final userPhone = ''.obs;
+  final userAddress = ''.obs;
   final profileImagePath = ''.obs;
+  final businessName = ''.obs;
 
   /// Selected gender for registration.
   final selectedGender = Rxn<String>();
@@ -92,24 +96,123 @@ class AuthController extends GetxController {
     super.onInit();
     _initGoogleSignIn();
     _loadUserProfile();
-    
+
     // Listen to auth changes
     FirebaseAuth.instance.authStateChanges().listen((User? user) {
       _loadUserProfile();
     });
   }
 
-  void _loadUserProfile() {
+  void _loadUserProfile() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      userName.value = user.displayName ?? 'RestoMart User';
-      userEmail.value = user.email ?? 'No email provided';
-      if (user.phoneNumber != null && user.phoneNumber!.isNotEmpty) {
-        userPhone.value = user.phoneNumber!;
+      userName.value = user.displayName ?? '';
+      userEmail.value = user.email ?? '';
+      userPhone.value = user.phoneNumber ?? '';
+      profileImagePath.value = (user.photoURL != null && user.photoURL!.startsWith('http')) ? user.photoURL! : '';
+      businessName.value = '';
+
+      // Try to load user photo and restaurant name from Firestore first
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          if (data['profileImagePath'] != null && (data['profileImagePath'] as String).isNotEmpty) {
+            profileImagePath.value = data['profileImagePath'] as String;
+          }
+          if (data['businessName'] != null && (data['businessName'] as String).isNotEmpty) {
+            businessName.value = data['businessName'] as String;
+          } else if (data['restaurantName'] != null && (data['restaurantName'] as String).isNotEmpty) {
+            businessName.value = data['restaurantName'] as String;
+          }
+        }
+      } catch (e) {
+        debugPrint('Error fetching user profile from Firestore: $e');
       }
-      if (user.photoURL != null && user.photoURL!.isNotEmpty) {
-        profileImagePath.value = user.photoURL!;
+
+      await _loadLocalProfileImage(user.uid);
+    } else {
+      // Clear profile when logged out
+      userName.value = '';
+      userEmail.value = '';
+      userPhone.value = '';
+      profileImagePath.value = '';
+      businessName.value = '';
+    }
+  }
+
+  Future<void> _loadLocalProfileImage(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Only load if not already set from Firestore or Google Photo
+    if (profileImagePath.isEmpty) {
+      final savedPath = prefs.getString('local_profile_image_$uid');
+      if (savedPath != null && savedPath.isNotEmpty) {
+        profileImagePath.value = savedPath;
       }
+    }
+
+    if (businessName.isEmpty) {
+      final savedBusinessName = prefs.getString('local_business_name_$uid');
+      if (savedBusinessName != null && savedBusinessName.isNotEmpty) {
+        businessName.value = savedBusinessName;
+      }
+    }
+  }
+
+  Future<void> pickProfileImage() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80,
+      );
+
+      if (image != null) {
+        // Read file bytes and convert to base64
+        final bytes = await File(image.path).readAsBytes();
+        final base64String = 'data:image/png;base64,${base64Encode(bytes)}';
+
+        profileImagePath.value = base64String;
+
+        // Save locally in SharedPreferences per UID
+        if (uid != null) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('local_profile_image_$uid', base64String);
+
+          try {
+            await FirebaseFirestore.instance.collection('users').doc(uid).set({
+              'profileImagePath': base64String,
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          } catch (fsError) {
+            debugPrint('Firestore photo update error: $fsError');
+          }
+        }
+
+        Get.snackbar(
+          'Profile Photo Updated',
+          'Your profile photo has been updated successfully.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green.shade50,
+          colorText: Colors.green.shade900,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error picking image: $e');
+      Get.snackbar(
+        'Error',
+        'Could not select image. Please try again.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.shade50,
+        colorText: Colors.red.shade900,
+      );
     }
   }
 
@@ -239,7 +342,8 @@ class AuthController extends GetxController {
   /// Handle registration via Firebase Email/Password
   Future<void> register() async {
     if (!(registerFormKey.currentState?.validate() ?? false)) return;
-    if (registerPasswordController.text != registerConfirmPasswordController.text) {
+    if (registerPasswordController.text !=
+        registerConfirmPasswordController.text) {
       Get.snackbar(
         'Password Mismatch',
         'Passwords do not match. Please try again.',
@@ -250,7 +354,7 @@ class AuthController extends GetxController {
       return;
     }
     if (!hasMinLength.value || !hasNumberOrSymbol.value) {
-       Get.snackbar(
+      Get.snackbar(
         'Weak Password',
         'Password must be at least 8 characters and include a special character.',
         snackPosition: SnackPosition.TOP,
@@ -282,9 +386,36 @@ class AuthController extends GetxController {
       UserCredential userCredential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(email: email, password: password);
 
-      // Update the user's name
-      await userCredential.user?.updateDisplayName(name);
-      
+      final uid = userCredential.user?.uid;
+      final phone = registerPhoneController.text.trim();
+      final restaurantName = registerRestaurantNameController.text.trim();
+      final restaurantAddress = registerRestaurantAddressController.text.trim();
+
+      if (uid != null) {
+        // Update the user's display name
+        await userCredential.user?.updateDisplayName(name);
+
+        // 1. Save user details to Firestore 'users' collection
+        await FirebaseFirestore.instance.collection('users').doc(uid).set({
+          'uid': uid,
+          'name': name,
+          'email': email,
+          'phone': phone,
+          'restaurantName': restaurantName,
+          'restaurantAddress': restaurantAddress,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        // 2. Ensure customer ledger account is created in 'ledger_accounts'
+        await LedgerService.ensureAccountExists(
+          uid: uid,
+          name: name,
+          email: email,
+          phone: phone,
+        );
+      }
+
       _loadUserProfile();
 
       _showSuccessBottomSheet(
@@ -333,14 +464,36 @@ class AuthController extends GetxController {
   Future<void> signInWithGoogle() async {
     isLoading.value = true;
     try {
-      final GoogleSignInAccount googleUser = await GoogleSignIn.instance.authenticate();
+      final GoogleSignInAccount googleUser = await GoogleSignIn.instance
+          .authenticate();
 
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;
       final AuthCredential credential = GoogleAuthProvider.credential(
         idToken: googleAuth.idToken,
       );
 
-      await FirebaseAuth.instance.signInWithCredential(credential);
+      UserCredential userCred = await FirebaseAuth.instance.signInWithCredential(credential);
+      final user = userCred.user;
+      if (user != null) {
+        final name = user.displayName ?? 'Customer';
+        final email = user.email ?? '';
+        final phone = user.phoneNumber ?? '';
+
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'uid': user.uid,
+          'name': name,
+          'email': email,
+          'phone': phone,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        await LedgerService.ensureAccountExists(
+          uid: user.uid,
+          name: name,
+          email: email,
+          phone: phone,
+        );
+      }
 
       Get.snackbar(
         'Success',
@@ -389,7 +542,9 @@ class AuthController extends GetxController {
 
       if (result.status == LoginStatus.success) {
         final AccessToken accessToken = result.accessToken!;
-        final OAuthCredential credential = FacebookAuthProvider.credential(accessToken.tokenString);
+        final OAuthCredential credential = FacebookAuthProvider.credential(
+          accessToken.tokenString,
+        );
 
         await FirebaseAuth.instance.signInWithCredential(credential);
 
@@ -439,8 +594,8 @@ class AuthController extends GetxController {
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
       Get.snackbar(
-        'Email Sent', 
-        'Password reset link has been sent to your email address.', 
+        'Email Sent',
+        'Password reset link has been sent to your email address.',
         backgroundColor: Colors.green.shade50,
         colorText: Colors.green.shade900,
         duration: const Duration(seconds: 4),
@@ -456,7 +611,8 @@ class AuthController extends GetxController {
   /// Handle OTP verification.
   Future<void> verifyOtp() async {
     final smsCode = otpController.text.trim();
-    if (smsCode.length != 6) { // Firebase OTPs are typically 6 digits
+    if (smsCode.length != 6) {
+      // Firebase OTPs are typically 6 digits
       Get.snackbar('Invalid', 'Please enter the 6-digit OTP code.');
       return;
     }
@@ -493,9 +649,12 @@ class AuthController extends GetxController {
     isLoading.value = true;
 
     try {
-      await Future.delayed(const Duration(seconds: 2));
-
-      // TODO: Call actual reset password API
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        await user.updatePassword(newPasswordController.text);
+      } else {
+        throw Exception("No authenticated user found.");
+      }
 
       Get.offAllNamed(AppRoutes.passwordSuccess);
     } catch (e) {
@@ -526,11 +685,16 @@ class AuthController extends GetxController {
     final name = parts[0];
     if (name.length <= 4) return email;
 
-    final masked = '${name.substring(0, 2)}${'*' * (name.length - 4)}${name.substring(name.length - 2)}@${parts[1]}';
+    final masked =
+        '${name.substring(0, 2)}${'*' * (name.length - 4)}${name.substring(name.length - 2)}@${parts[1]}';
     return masked;
   }
 
-  void _showSuccessBottomSheet(String title, String message, {bool toHome = true}) {
+  void _showSuccessBottomSheet(
+    String title,
+    String message, {
+    bool toHome = true,
+  }) {
     Get.bottomSheet(
       Container(
         padding: const EdgeInsets.all(24),
@@ -551,18 +715,30 @@ class AuthController extends GetxController {
                 color: Colors.green.shade50,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.check_circle, color: Colors.green, size: 64),
+              child: const Icon(
+                Icons.check_circle,
+                color: Colors.green,
+                size: 64,
+              ),
             ),
             const SizedBox(height: 24),
             Text(
               title,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black),
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
             ),
             const SizedBox(height: 12),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15, color: Colors.grey.shade600, height: 1.5),
+              style: TextStyle(
+                fontSize: 15,
+                color: Colors.grey.shade600,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 32),
             SizedBox(
@@ -578,10 +754,15 @@ class AuthController extends GetxController {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.black,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(30),
+                  ),
                   elevation: 0,
                 ),
-                child: const Text('Browse Home', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                child: const Text(
+                  'Browse Home',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -597,27 +778,58 @@ class AuthController extends GetxController {
 
   Future<void> logout() async {
     try {
+      isLoading.value = true;
+
+      // 1. Sign out from Firebase
       await FirebaseAuth.instance.signOut();
-      await GoogleSignIn.instance.signOut();
-      await FacebookAuth.instance.logOut();
-          
-          // Clear user-specific state
-          if (Get.isRegistered<CartController>()) {
-            Get.find<CartController>().clearCartForLogout();
-          }
-          if (Get.isRegistered<OrdersController>()) {
-            Get.find<OrdersController>().orders.clear();
-          }
-          
-          Get.offAllNamed(AppRoutes.login);
+
+      // 2. Safe sign out from Google
+      try {
+        await GoogleSignIn.instance.signOut();
       } catch (e) {
-        Get.snackbar(
-          'Logout Failed',
-          e.toString(),
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red.shade50,
-          colorText: Colors.red.shade800,
-        );
+        debugPrint('Google logout error: $e');
       }
+
+      // 3. Safe sign out from Facebook
+      try {
+        await FacebookAuth.instance.logOut();
+      } catch (e) {
+        debugPrint('Facebook logout error: $e');
+      }
+
+      // 4. Clear user-specific state
+      userName.value = '';
+      userEmail.value = '';
+      userPhone.value = '';
+      profileImagePath.value = '';
+      businessName.value = '';
+
+      if (Get.isRegistered<AddressController>()) {
+        Get.find<AddressController>().clearAll();
+      }
+      if (Get.isRegistered<CartController>()) {
+        Get.find<CartController>().clearCartForLogout();
+      }
+      if (Get.isRegistered<OrdersController>()) {
+        Get.find<OrdersController>().orders.clear();
+      }
+
+      // Reset login form fields
+      loginEmailController.clear();
+      loginPasswordController.clear();
+
+      // Ensure open dialogs or overlays are dismissed
+      if (Get.isDialogOpen ?? false) {
+        Get.back();
+      }
+
+      Get.offAllNamed(AppRoutes.login);
+    } catch (e) {
+      debugPrint('Logout error: $e');
+      // Always fallback to login screen so user is never stuck
+      Get.offAllNamed(AppRoutes.login);
+    } finally {
+      isLoading.value = false;
+    }
   }
 }

@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'dart:developer';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class WooCommerceApiService {
   static const String _baseUrl = 'https://restomart.pk/wp-json/wc/v3';
-  static const String _consumerKey = 'ck_823aab9b5cab2eba66e6751f4f5c6502fe306566';
-  static const String _consumerSecret = 'cs_00ed3a9685b5697cb50e61b70a004f4f36e2b99f';
+  static String get _consumerKey => dotenv.env['WOO_CONSUMER_KEY'] ?? '';
+  static String get _consumerSecret => dotenv.env['WOO_CONSUMER_SECRET'] ?? '';
 
   static Map<String, String> get _headers {
     return {
@@ -20,7 +23,7 @@ class WooCommerceApiService {
   }
 
   /// Fetch all products from WooCommerce
-  static Future<List<dynamic>> getProducts({int page = 1, int perPage = 20, String? categoryId, bool? onSale, String? searchQuery}) async {
+  static Future<List<dynamic>> getProducts({int page = 1, int perPage = 20, String? categoryId, bool? onSale, String? searchQuery, String? orderBy, String? order}) async {
     try {
       String url = '$_baseUrl/products?page=$page&per_page=$perPage';
       if (categoryId != null) {
@@ -32,10 +35,16 @@ class WooCommerceApiService {
       if (searchQuery != null && searchQuery.isNotEmpty) {
         url += '&search=${Uri.encodeComponent(searchQuery)}';
       }
+      if (orderBy != null && orderBy.isNotEmpty) {
+        url += '&orderby=$orderBy';
+      }
+      if (order != null && order.isNotEmpty) {
+        url += '&order=$order';
+      }
 
       url = _appendAuth(url);
       log('WOOCOMMERCE API: Fetching products from $url');
-      final response = await http.get(Uri.parse(url), headers: _headers);
+      final response = await http.get(Uri.parse(url), headers: _headers).timeout(const Duration(seconds: 15));
       
       if (response.statusCode == 200) {
         return json.decode(response.body);
@@ -53,7 +62,7 @@ class WooCommerceApiService {
   static Future<Map<String, dynamic>?> getProduct(int id) async {
     try {
       final url = _appendAuth('$_baseUrl/products/$id');
-      final response = await http.get(Uri.parse(url), headers: _headers);
+      final response = await http.get(Uri.parse(url), headers: _headers).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         return json.decode(response.body);
       }
@@ -70,7 +79,7 @@ class WooCommerceApiService {
       url = _appendAuth(url);
       log('WOOCOMMERCE API: Fetching categories from $url');
       
-      final response = await http.get(Uri.parse(url), headers: _headers);
+      final response = await http.get(Uri.parse(url), headers: _headers).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
@@ -91,7 +100,7 @@ class WooCommerceApiService {
         Uri.parse(url),
         headers: _headers,
         body: json.encode(orderData),
-      );
+      ).timeout(const Duration(seconds: 15));
       if (response.statusCode == 201) {
         log('WOOCOMMERCE API: Order created successfully!');
         final responseData = json.decode(response.body);
@@ -109,9 +118,28 @@ class WooCommerceApiService {
   /// Validate a coupon code in WooCommerce
   static Future<Map<String, dynamic>?> validateCoupon(String code) async {
     try {
+      // --- DUMMY PROMOS FOR TESTING ---
+      final testCode = code.toUpperCase();
+      if (testCode == 'WELCOME10' || testCode == 'SAVE500') {
+        final prefs = await SharedPreferences.getInstance();
+        final user = FirebaseAuth.instance.currentUser;
+        final uid = user?.uid ?? 'guest';
+        if (prefs.getBool('used_promo_${testCode}_$uid') == true) {
+          log('WOOCOMMERCE API: Dummy promo already used by $uid');
+          return null; // Already used
+        }
+
+        return { 
+          'code': testCode, 
+          'discount_type': testCode == 'WELCOME10' ? 'percent' : 'fixed_cart', 
+          'amount': testCode == 'WELCOME10' ? '10' : '500' 
+        };
+      }
+      // --------------------------------
+
       final url = _appendAuth('$_baseUrl/coupons?code=$code');
       log('WOOCOMMERCE API: Validating coupon: $code');
-      final response = await http.get(Uri.parse(url), headers: _headers);
+      final response = await http.get(Uri.parse(url), headers: _headers).timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         final List<dynamic> coupons = json.decode(response.body);
         if (coupons.isNotEmpty) {

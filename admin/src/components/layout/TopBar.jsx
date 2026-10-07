@@ -1,6 +1,10 @@
-import { Search, Bell, Settings, Menu } from 'lucide-react';
+import { Search, Settings, Menu } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import NotificationPanel from './NotificationPanel';
 
 export default function TopBar({ onMenuClick }) {
+  const navigate = useNavigate();
+
   return (
     <header className="h-16 bg-white border-b border-border flex items-center justify-between px-6 sticky top-0 z-30">
       {/* Left: Hamburger + Search */}
@@ -32,18 +36,20 @@ export default function TopBar({ onMenuClick }) {
 
       {/* Right: Icons + User */}
       <div className="flex items-center gap-3">
-        <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
-          <Settings className="w-[18px] h-[18px] text-text-secondary" />
+        <button 
+          onClick={() => navigate('/settings')}
+          className="relative p-2.5 rounded-xl hover:bg-gray-100 text-gray-600 transition-colors"
+          title="Settings"
+        >
+          <Settings className="w-5 h-5" />
         </button>
 
-        <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
-          <Bell className="w-[18px] h-[18px] text-text-secondary" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-danger rounded-full border-2 border-white" />
-        </button>
+        {/* Real-time Notification Panel */}
+        <NotificationPanel />
 
         {/* User Avatar */}
         <div className="flex items-center gap-3 pl-3 border-l border-border ml-1">
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white text-sm font-bold">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white text-sm font-bold shadow-sm">
             RM
           </div>
           <div className="hidden md:block">

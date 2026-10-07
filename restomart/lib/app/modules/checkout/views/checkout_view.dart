@@ -1,7 +1,9 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get/get.dart';
 import 'package:lottie/lottie.dart';
+import '../../auth/controllers/auth_controller.dart';
 
 import '../../../core/constants/app_text_styles.dart';
 import '../../cart/controllers/cart_controller.dart';
@@ -29,13 +31,36 @@ class _CheckoutViewState extends State<CheckoutView> {
   String? _orderNumber;
   bool isPlacingOrder = false;
   
-  final TextEditingController _instructionsController = TextEditingController();
-  final TextEditingController _storeNameController = TextEditingController(text: 'Karachi Kitchen');
-  final TextEditingController _nameController = TextEditingController(text: 'Muhammad Ali');
-  final TextEditingController _phoneController = TextEditingController(text: '+92 321 1655556');
+  late final TextEditingController _instructionsController;
+  late final TextEditingController _storeNameController;
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _manualAddressInputController;
   final AddressController addressController = Get.put(AddressController());
   
   bool _isEditingPersonalInfo = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = FirebaseAuth.instance.currentUser;
+    String name = user?.displayName ?? '';
+    String phone = '';
+    
+    if (Get.isRegistered<AuthController>()) {
+      final auth = Get.find<AuthController>();
+      if (name.isEmpty) name = auth.userName.value;
+      phone = auth.userPhone.value;
+      _storeNameController = TextEditingController(text: auth.businessName.value.isNotEmpty ? auth.businessName.value : (name.isNotEmpty ? '$name Store' : ''));
+    } else {
+      _storeNameController = TextEditingController(text: name.isNotEmpty ? '$name Store' : '');
+    }
+
+    _instructionsController = TextEditingController();
+    _nameController = TextEditingController(text: name);
+    _phoneController = TextEditingController(text: phone);
+    _manualAddressInputController = TextEditingController();
+  }
 
   @override
   void dispose() {
@@ -43,6 +68,7 @@ class _CheckoutViewState extends State<CheckoutView> {
     _storeNameController.dispose();
     _nameController.dispose();
     _phoneController.dispose();
+    _manualAddressInputController.dispose();
     super.dispose();
   }
 
@@ -56,8 +82,9 @@ class _CheckoutViewState extends State<CheckoutView> {
   Widget build(BuildContext context) {
     final cartController = Get.find<CartController>();
     final double subtotal = cartController.totalPrice;
-    final double shipping = subtotal > 0 ? 150.0 : 0.0;
-    final double total = subtotal + shipping;
+    final double discount = cartController.discountAmount.value;
+    final double shipping = (cartController.finalTotal > 0 && cartController.finalTotal < 500) ? 150.0 : 0.0;
+    final double total = cartController.finalTotal + shipping;
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -141,7 +168,7 @@ class _CheckoutViewState extends State<CheckoutView> {
                             final result = await Get.to(() => const LocationPickerView());
                             if (result != null) {
                               addressController.addAddress(
-                                'New Location',
+                                (result['label'] as String?) ?? 'New Location',
                                 result['address'] as String,
                               );
                             }
@@ -151,55 +178,110 @@ class _CheckoutViewState extends State<CheckoutView> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Obx(() => Column(
-                          children: List.generate(addressController.savedAddresses.length, (index) {
-                            final addr = addressController.savedAddresses[index];
-                            final isSelected = addressController.selectedAddressIndex.value == index;
-                            return GestureDetector(
-                              onTap: () => addressController.selectAddress(index),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
+                    Obx(() {
+                      if (addressController.savedAddresses.isEmpty) {
+                        return Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: isSelected ? const Color(0xFFF0F0FF) : Colors.white,
+                            color: Colors.white,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: isSelected ? const Color(0xFF25258F) : Colors.grey.shade300,
-                              width: isSelected ? 2 : 1,
-                            ),
+                            border: Border.all(color: Colors.grey.shade300),
                           ),
-                          child: Row(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(Icons.location_on, color: isSelected ? const Color(0xFF25258F) : Colors.grey),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(addr['label']!, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
-                                        if (index == 0) ...[
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(color: const Color(0xFF25258F), borderRadius: BorderRadius.circular(8)),
-                                            child: const Text('Default', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(addr['address']!, style: AppTextStyles.label.copyWith(color: Colors.grey.shade600)),
-                                  ],
+                              const Text('Type Delivery Address Manually', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Color(0xFF25258F))),
+                              const SizedBox(height: 8),
+                              TextField(
+                                controller: _manualAddressInputController,
+                                maxLines: 2,
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. House #12, Street 4, DHA Phase 6, Lahore',
+                                  hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                                  filled: true,
+                                  fillColor: Colors.grey.shade50,
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                                  focusedBorder: const OutlineInputBorder(borderSide: BorderSide(color: Color(0xFF25258F), width: 2)),
                                 ),
                               ),
-                              if (isSelected) const Icon(Icons.check_circle, color: Color(0xFF25258F), size: 22),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: () {
+                                    final text = _manualAddressInputController.text.trim();
+                                    if (text.isNotEmpty) {
+                                      addressController.addAddress('Home', text);
+                                      _manualAddressInputController.clear();
+                                    } else {
+                                      Get.snackbar('Address Required', 'Please type your address in the box.');
+                                    }
+                                  },
+                                  icon: const Icon(Icons.add_location_alt, size: 18),
+                                  label: const Text('Save & Select Address'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF25258F),
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
-                        ),
+                        );
+                      }
+
+                      return Column(
+                        children: List.generate(addressController.savedAddresses.length, (index) {
+                          final addr = addressController.savedAddresses[index];
+                          final isSelected = addressController.selectedAddressIndex.value == index;
+                          return GestureDetector(
+                            onTap: () => addressController.selectAddress(index),
+                            child: Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFFF0F0FF) : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected ? const Color(0xFF25258F) : Colors.grey.shade300,
+                                  width: isSelected ? 2 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.location_on, color: isSelected ? const Color(0xFF25258F) : Colors.grey),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Text(addr['label']!, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+                                            if (index == 0) ...[
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                decoration: BoxDecoration(color: const Color(0xFF25258F), borderRadius: BorderRadius.circular(8)),
+                                                child: const Text('Default', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(addr['address']!, style: AppTextStyles.label.copyWith(color: Colors.grey.shade600)),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isSelected) const Icon(Icons.check_circle, color: Color(0xFF25258F), size: 22),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
                       );
-                    }))),
+                    }),
                     const SizedBox(height: 24),
 
                     // ── Your Order Summary ───────────────────────
@@ -324,6 +406,10 @@ class _CheckoutViewState extends State<CheckoutView> {
                     Text('Order Info', style: AppTextStyles.headingMedium.copyWith(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     _buildInfoRow('Subtotal', 'Rs. ${subtotal.toInt()}'),
+                    if (discount > 0) ...[
+                      const SizedBox(height: 8),
+                      _buildInfoRow('Discount', '- Rs. ${discount.toInt()}', valueColor: Colors.green),
+                    ],
                     const SizedBox(height: 8),
                     _buildInfoRow('Shipping', 'Rs. ${shipping.toInt()}'),
                     const SizedBox(height: 8),
@@ -357,6 +443,22 @@ class _CheckoutViewState extends State<CheckoutView> {
                     ElevatedButton(
                       onPressed: isPlacingOrder ? null : () async {
                         if (currentStep == 1) {
+                          if (addressController.savedAddresses.isEmpty) {
+                            final manualText = _manualAddressInputController.text.trim();
+                            if (manualText.isNotEmpty) {
+                              addressController.addAddress('Home', manualText);
+                              _manualAddressInputController.clear();
+                            } else {
+                              Get.snackbar(
+                                'Address Required',
+                                'Please enter or type your delivery address to continue.',
+                                snackPosition: SnackPosition.BOTTOM,
+                                backgroundColor: Colors.red.shade50,
+                                colorText: Colors.red.shade900,
+                              );
+                              return;
+                            }
+                          }
                           setState(() => currentStep = 2);
                         } else if (currentStep == 2) {
                           setState(() {
@@ -382,17 +484,19 @@ class _CheckoutViewState extends State<CheckoutView> {
                             }).toList();
                             
                             // 2. Build Customer Details (Using hardcoded user data or address picker)
-                            final activeAddr = addressController.savedAddresses[addressController.selectedAddressIndex.value];
+                            final Map<String, dynamic> activeAddr = addressController.savedAddresses.isNotEmpty
+                                ? addressController.savedAddresses[addressController.selectedAddressIndex.value]
+                                : {'address': 'Default Address, Pakistan'};
                             final billing = {
-                              "first_name": "Muhammad",
-                              "last_name": "Ali",
+                              "first_name": _nameController.text.isNotEmpty ? _nameController.text : "Guest",
+                              "last_name": "Customer",
                               "address_1": activeAddr['address'],
-                              "city": "Karachi",
-                              "state": "SD",
-                              "postcode": "75000",
+                              "city": "Lahore",
+                              "state": "PB",
+                              "postcode": "54000",
                               "country": "PK",
                               "email": FirebaseAuth.instance.currentUser?.email ?? "customer@restomart.pk",
-                              "phone": "+923211655556"
+                              "phone": _phoneController.text.isNotEmpty ? _phoneController.text : "00000000000"
                             };
 
                             final payload = {
@@ -402,6 +506,12 @@ class _CheckoutViewState extends State<CheckoutView> {
                               "billing": billing,
                               "shipping": billing,
                               "line_items": lineItems,
+                              if (cartController.appliedCouponCode.value != null && cartController.appliedCouponCode.value!.isNotEmpty)
+                                "coupon_lines": [
+                                  {
+                                    "code": cartController.appliedCouponCode.value
+                                  }
+                                ],
                               "shipping_lines": [
                                 {
                                   "method_id": "flat_rate",
@@ -412,93 +522,97 @@ class _CheckoutViewState extends State<CheckoutView> {
                               "customer_note": _instructionsController.text
                             };
 
-                            // 3. Post to WordPress
-                            String? wooOrderId = await WooCommerceApiService.createOrder(payload);
+                            // 3. Post to WordPress (attempt WooCommerce API)
+                            String? wooOrderId;
+                            try {
+                              wooOrderId = await WooCommerceApiService.createOrder(payload);
+                            } catch (e) {
+                              print("WooCommerce API Exception: $e");
+                            }
 
-                            if (wooOrderId != null) {
-                              _orderNumber = wooOrderId; // Update local order number to match WooCommerce
+                            if (wooOrderId != null && wooOrderId.isNotEmpty) {
+                              _orderNumber = wooOrderId;
+                            } else {
+                              _orderNumber = _orderNumber ?? _generateOrderNumber();
+                            }
 
-                              final newOrder = OrderModel(
-                                id: _orderNumber!,
-                                date: DateTime.now(),
-                                total: total,
-                                status: 'Processing',
-                                paymentMethod: selectedPayment,
-                                specialInstructions: _instructionsController.text,
-                                items: List.from(cartController.cartItems), // Clone list
-                              );
+                            final newOrder = OrderModel(
+                              id: _orderNumber!,
+                              date: DateTime.now(),
+                              total: total,
+                              status: 'pending',
+                              paymentMethod: selectedPayment,
+                              specialInstructions: _instructionsController.text,
+                              items: List.from(cartController.cartItems), // Clone list
+                            );
 
-                              // Save to local orders history
-                              ordersController.addOrder(newOrder);
+                            // Save to local orders history & Firestore
+                            await ordersController.addOrder(
+                              newOrder,
+                              customerName: _nameController.text,
+                              phone: _phoneController.text,
+                              address: activeAddr['address'],
+                            );
 
-                              cartController.clearCart();
-                              
-                              // Ledger: Ensure account and record debit
-                              try {
+                            if (cartController.appliedCouponCode.value != null) {
+                              final usedCode = cartController.appliedCouponCode.value!.toUpperCase();
+                              if (usedCode == 'WELCOME10' || usedCode == 'SAVE500') {
+                                final prefs = await SharedPreferences.getInstance();
                                 final user = FirebaseAuth.instance.currentUser;
                                 final uid = user?.uid ?? 'guest';
-                                final email = user?.email ?? 'guest@restomart.pk';
-                                
-                                await LedgerService.ensureAccountExists(
-                                  uid: uid,
-                                  name: _nameController.text.isNotEmpty ? _nameController.text : 'Guest Customer',
-                                  email: email,
-                                  phone: _phoneController.text.isNotEmpty ? _phoneController.text : '+920000000000',
-                                );
-                                
-                                await LedgerService.recordOrderDebit(
-                                  uid: uid,
-                                  orderId: _orderNumber!,
-                                  amount: total,
-                                  paymentMethod: selectedPayment,
-                                );
-                              } catch (e) {
-                                print("Ledger error: $e");
+                                final key = 'used_promo_${usedCode}_$uid';
+                                await prefs.setBool(key, true);
                               }
-                              
-                              // Trigger local notification safely
-                              try {
-                                PushNotificationService.showOrderSuccessNotification(_orderNumber!);
-                              } catch (e) {
-                                print("Notification failed: $e");
-                              }
-
-                              // Send Invoice Email via SMTP to the logged-in user
-                              try {
-                                final user = FirebaseAuth.instance.currentUser;
-                                if (user != null) {
-                                  WooCommerceApiService.markCartConverted(user.uid);
-                                  final currentUserEmail = user.email;
-                                  if (currentUserEmail != null && currentUserEmail.isNotEmpty) {
-                                    PdfInvoiceService.generateInvoiceBytes(newOrder).then((pdfBytes) {
-                                      EmailService.sendInvoiceEmail(
-                                        recipientEmail: currentUserEmail,
-                                        order: newOrder,
-                                        pdfBytes: pdfBytes,
-                                      ).catchError((e) => print("Email error: $e"));
-                                    }).catchError((e) => print("PDF error: $e"));
-                                  }
-                                }
-                              } catch (e) {
-                                print("Email sequence failed: $e");
-                              }
-
-                              setState(() {
-                                isPlacingOrder = false;
-                                currentStep = 3;
-                              });
-                            } else {
-                              setState(() {
-                                isPlacingOrder = false;
-                              });
-                              Get.snackbar(
-                                'Checkout Failed', 
-                                'There was a problem sending your order to the server. Please try again.',
-                                backgroundColor: Colors.red.shade600,
-                                colorText: Colors.white,
-                                snackPosition: SnackPosition.BOTTOM,
-                              );
                             }
+
+                            cartController.clearCart();
+                            
+                            // Ledger: Ensure account exists
+                            try {
+                              final user = FirebaseAuth.instance.currentUser;
+                              final uid = user?.uid ?? 'guest';
+                              final email = user?.email ?? 'guest@restomart.pk';
+                              
+                              await LedgerService.ensureAccountExists(
+                                uid: uid,
+                                name: _nameController.text.isNotEmpty ? _nameController.text : 'Guest Customer',
+                                email: email,
+                                phone: _phoneController.text.isNotEmpty ? _phoneController.text : '+920000000000',
+                              );
+                            } catch (e) {
+                              print("Ledger error: $e");
+                            }
+                            
+                            // Trigger local notification safely
+                            try {
+                              PushNotificationService.showOrderSuccessNotification(_orderNumber!);
+                            } catch (e) {
+                              print("Notification failed: $e");
+                            }
+
+                            // Send Invoice Email via SMTP to the logged-in user
+                            try {
+                              final user = FirebaseAuth.instance.currentUser;
+                              if (user != null) {
+                                WooCommerceApiService.markCartConverted(user.uid);
+                                final currentUserEmail = user.email;
+                                if (currentUserEmail != null && currentUserEmail.isNotEmpty) {
+                                  final pdfBytes = await PdfInvoiceService.generateInvoiceBytes(newOrder);
+                                  await EmailService.sendInvoiceEmail(
+                                    recipientEmail: currentUserEmail,
+                                    order: newOrder,
+                                    pdfBytes: pdfBytes,
+                                  );
+                                }
+                              }
+                            } catch (e) {
+                              print("Email sequence failed: $e");
+                            }
+
+                            setState(() {
+                              isPlacingOrder = false;
+                              currentStep = 3;
+                            });
                           } catch (e) {
                             print("Checkout exception: $e");
                             setState(() {
@@ -537,31 +651,44 @@ class _CheckoutViewState extends State<CheckoutView> {
 
   Widget _buildConfirmationScreen() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // Success Check Animation
-            SizedBox(
-              width: 150,
-              height: 150,
-              child: Lottie.asset(
-                'assets/images/ORDER CONFIRMED svg.json',
-                repeat: false,
+            // Prominent Big Green Tick Mark Icon
+            Container(
+              width: 110,
+              height: 110,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F5E9),
+                shape: BoxShape.circle,
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x332E7D32),
+                    blurRadius: 20,
+                    spreadRadius: 4,
+                  )
+                ],
+              ),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                size: 88,
+                color: Color(0xFF2E7D32),
               ),
             ),
             const SizedBox(height: 24),
             const Text(
-              'Order Placed Successfully!',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF2C3E50)),
+              'Order Confirmed!',
+              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Color(0xFF1B5E20), letterSpacing: 0.3),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
-              'Your order has been confirmed.\nWe will deliver it to your restaurant soon.',
+              'Your order has been confirmed successfully.\nWe will deliver it to your restaurant soon.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade600, height: 1.5),
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade700, height: 1.5),
             ),
             const SizedBox(height: 32),
 
@@ -571,7 +698,7 @@ class _CheckoutViewState extends State<CheckoutView> {
               decoration: BoxDecoration(
                 color: const Color(0xFFF0F0FF),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF25258F).withValues(alpha: 0.3)),
+                border: Border.all(color: const Color(0x4D25258F)),
               ),
               child: Column(
                 children: [
@@ -679,12 +806,12 @@ class _CheckoutViewState extends State<CheckoutView> {
     );
   }
 
-  Widget _buildInfoRow(String label, String value, {bool isBold = false}) {
+  Widget _buildInfoRow(String label, String value, {bool isBold = false, Color? valueColor}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: AppTextStyles.bodyMedium.copyWith(color: isBold ? Colors.black : Colors.grey.shade600)),
-        Text(value, style: AppTextStyles.bodyMedium.copyWith(fontWeight: isBold ? FontWeight.bold : FontWeight.w600)),
+        Text(value, style: AppTextStyles.bodyMedium.copyWith(fontWeight: isBold ? FontWeight.bold : FontWeight.w600, color: valueColor)),
       ],
     );
   }

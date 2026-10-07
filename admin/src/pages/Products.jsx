@@ -10,13 +10,17 @@ import {
   Eye,
   Download,
   Save,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import StatCard from '../components/shared/StatCard';
 import StatusBadge from '../components/shared/StatusBadge';
 import FilterPanel from '../components/shared/FilterPanel';
 import Modal from '../components/shared/Modal';
+import Loader from '../components/shared/Loader';
 import {
   mockProducts as initialProducts, // kept for reference
+  mockCategories,
   mockDashboardStats,
 } from '../data/mockData';
 import { getProducts, updateProduct, createProduct, getCategories } from '../services/woocommerce';
@@ -27,6 +31,8 @@ export default function Products() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState(null);
   const [editProduct, setEditProduct] = useState(null);
@@ -53,13 +59,17 @@ export default function Products() {
         getProducts(),
         getCategories()
       ]);
-      setProducts(prods);
-      setCategories(cats);
-      if (cats.length > 0) {
-        setNewProduct(prev => ({ ...prev, category: cats[0] }));
+      const finalProds = prods && prods.length > 0 ? prods : initialProducts;
+      const finalCats = cats && cats.length > 0 ? cats : mockCategories;
+      setProducts(finalProds);
+      setCategories(finalCats);
+      if (finalCats.length > 0) {
+        setNewProduct(prev => ({ ...prev, category: finalCats[0] }));
       }
     } catch (error) {
       console.error('Failed to load products', error);
+      setProducts(initialProducts);
+      setCategories(mockCategories);
     } finally {
       setLoading(false);
     }
@@ -105,6 +115,10 @@ export default function Products() {
     return prods;
   }, [products, searchQuery, activeFilters, categories]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeFilters]);
+
   const handleExportCSV = () => {
     const headers = ['Product ID', 'Name', 'Brand', 'Category', 'Stock', 'Price', 'Status'];
     const rows = filteredProducts.map((p) => [
@@ -121,9 +135,11 @@ export default function Products() {
   const handleSaveProduct = async (updatedProduct) => {
     try {
       await updateProduct(updatedProduct.id, {
+        name: updatedProduct.name,
         regular_price: updatedProduct.price.toString(),
         manage_stock: true,
         stock_quantity: updatedProduct.stock,
+        description: updatedProduct.description || '',
       });
 
       let status = 'in_stock';
@@ -144,23 +160,6 @@ export default function Products() {
     }
   };
 
-  const handleCreateProduct = async () => {
-    try {
-      const created = await createProduct({
-        name: newProduct.name,
-        regular_price: newProduct.price.toString(),
-        manage_stock: true,
-        stock_quantity: newProduct.stock,
-      });
-      // reload data
-      loadData();
-      setIsAddingProduct(false);
-      setNewProduct({ name: '', brand: '', category: categories[0] || '', price: 0, stock: 0, image: '' });
-    } catch (error) {
-      alert('Failed to create product');
-    }
-  };
-
   return (
     <div className="space-y-6">
       {/* Page Header */}
@@ -168,7 +167,7 @@ export default function Products() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Products</h1>
           <p className="text-sm text-text-secondary mt-1">
-            Manage your inventory and stock levels
+            Manage your inventory, stock levels, and product prices
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -176,37 +175,47 @@ export default function Products() {
             <Download className="w-4 h-4" />
             Export CSV
           </button>
-          <button onClick={() => setIsAddingProduct(true)} className="btn-primary flex items-center gap-2">
-            <ShoppingCart className="w-4 h-4" />
-            Add Product
-          </button>
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <StatCard
-          icon={ShoppingCart}
-          iconBg="bg-blue-100 text-blue-600"
-          title="Total Products"
-          value={stats.totalProducts.toLocaleString()}
-          change="+Active"
-        />
-        <StatCard
-          icon={DollarSign}
-          iconBg="bg-emerald-100 text-emerald-600"
-          title="Categories"
-          value={`${stats.categories}`}
-          change="Available"
-        />
-        <StatCard
-          icon={AlertTriangle}
-          iconBg="bg-red-100 text-red-500"
-          title="Low/Out of Stock"
-          value={`${stats.lowStock} Items`}
-          change="Needs action"
-        />
-      </div>
+      {loading ? (
+        <Loader message="Fetching products from WooCommerce..." />
+      ) : (
+        <>
+          {/* Stat Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <StatCard
+              icon={ShoppingCart}
+              color="blue"
+              title="Total Products"
+              value={stats.totalProducts.toLocaleString()}
+              changeText="+Active Inventory"
+              onClick={() => {
+                setActiveFilters(null);
+                setSearchQuery('');
+              }}
+            />
+            <StatCard
+              icon={DollarSign}
+              color="emerald"
+              title="Categories"
+              value={`${stats.categories}`}
+              changeText="Available Categories"
+            />
+            <StatCard
+              icon={AlertTriangle}
+              color="red"
+              title="Low/Out of Stock"
+              value={`${stats.lowStock} Items`}
+              changeText="Click to filter low stock"
+              onClick={() => {
+                setActiveFilters({
+                  stockFilters: { low_stock: true, out_of_stock: true, in_stock: false, overflow: false },
+                  categoryFilters: {}
+                });
+              }}
+            />
+          </div>
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
@@ -264,7 +273,9 @@ export default function Products() {
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.map((product) => (
+              {filteredProducts
+                .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                .map((product) => (
                 <tr
                   key={product.id}
                   className="hover:bg-surface/50 transition-colors group"
@@ -323,7 +334,41 @@ export default function Products() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer */}
+        {filteredProducts.length > itemsPerPage && (
+          <div className="flex items-center justify-between px-6 py-4 border-t border-border-light bg-surface/30">
+            <p className="text-xs text-text-muted">
+              Showing <span className="font-bold text-text-primary">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+              <span className="font-bold text-text-primary">
+                {Math.min(currentPage * itemsPerPage, filteredProducts.length)}
+              </span>{' '}
+              of <span className="font-bold text-text-primary">{filteredProducts.length}</span> products
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg border border-border-light hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4 text-text-secondary" />
+              </button>
+              <span className="text-xs font-bold text-text-primary px-2">
+                Page {currentPage} of {Math.ceil(filteredProducts.length / itemsPerPage)}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(p + 1, Math.ceil(filteredProducts.length / itemsPerPage)))}
+                disabled={currentPage === Math.ceil(filteredProducts.length / itemsPerPage)}
+                className="p-2 rounded-lg border border-border-light hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4 text-text-secondary" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+      </>
+      )}
 
       {/* Edit Product Modal */}
       <Modal
@@ -334,7 +379,7 @@ export default function Products() {
         {editProduct && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">Product Name</label>
+              <label className="block text-sm font-medium text-text-secondary mb-1.5">Product Name (Title)</label>
               <input
                 type="text"
                 value={editProduct.name}
@@ -353,7 +398,7 @@ export default function Products() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-text-secondary mb-1.5">Stock</label>
+                <label className="block text-sm font-medium text-text-secondary mb-1.5">Stock Quantity</label>
                 <input
                   type="number"
                   value={editProduct.stock}
@@ -375,12 +420,13 @@ export default function Products() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">Brand</label>
-              <input
-                type="text"
-                value={editProduct.brand}
-                onChange={(e) => setEditProduct({ ...editProduct, brand: e.target.value })}
+              <label className="block text-sm font-medium text-text-secondary mb-1.5">Product Description</label>
+              <textarea
+                rows={3}
+                value={editProduct.description || ''}
+                onChange={(e) => setEditProduct({ ...editProduct, description: e.target.value })}
                 className="input-field w-full"
+                placeholder="Product description..."
               />
             </div>
             <div className="flex gap-3 pt-2">
@@ -435,6 +481,12 @@ export default function Products() {
                 </div>
               ))}
             </div>
+            {viewProduct.description && (
+              <div className="bg-surface rounded-xl p-4">
+                <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">Description</p>
+                <p className="text-sm text-text-secondary">{viewProduct.description}</p>
+              </div>
+            )}
             <button
               onClick={() => {
                 setViewProduct(null);
@@ -447,80 +499,6 @@ export default function Products() {
             </button>
           </div>
         )}
-      </Modal>
-      {/* Add Product Modal */}
-      <Modal
-        isOpen={isAddingProduct}
-        onClose={() => setIsAddingProduct(false)}
-        title="Add New Product"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">Product Name</label>
-            <input
-              type="text"
-              value={newProduct.name}
-              onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })}
-              className="input-field w-full"
-              placeholder="e.g. Shangrila Tomato Ketchup"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">Price (₨)</label>
-              <input
-                type="number"
-                value={newProduct.price}
-                onChange={(e) => setNewProduct({ ...newProduct, price: Number(e.target.value) })}
-                className="input-field w-full"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-1.5">Initial Stock</label>
-              <input
-                type="number"
-                value={newProduct.stock}
-                onChange={(e) => setNewProduct({ ...newProduct, stock: Number(e.target.value) })}
-                className="input-field w-full"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">Category</label>
-            <select
-              value={newProduct.category}
-              onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
-              className="input-field w-full"
-            >
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">Brand</label>
-            <input
-              type="text"
-              value={newProduct.brand}
-              onChange={(e) => setNewProduct({ ...newProduct, brand: e.target.value })}
-              className="input-field w-full"
-              placeholder="e.g. Shangrila"
-            />
-          </div>
-          <div className="flex gap-3 pt-2">
-            <button
-              onClick={handleCreateProduct}
-              className="btn-primary flex items-center gap-2"
-              disabled={!newProduct.name}
-            >
-              <Save className="w-4 h-4" />
-              Create Product
-            </button>
-            <button onClick={() => setIsAddingProduct(false)} className="btn-outline">
-              Cancel
-            </button>
-          </div>
-        </div>
       </Modal>
     </div>
   );

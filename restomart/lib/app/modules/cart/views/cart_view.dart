@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:get/get.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../controllers/cart_controller.dart';
 import '../controllers/templates_controller.dart';
 import '../../checkout/views/checkout_view.dart';
 import '../../main/views/all_products_view.dart';
+import '../../main/views/product_details_view.dart';
 import '../../../widgets/confirmation_dialog.dart';
 
 class CartView extends StatelessWidget {
@@ -53,7 +55,7 @@ class CartView extends StatelessWidget {
 
         final double subtotal = cartController.totalPrice;
         final double discount = cartController.discountAmount.value;
-        final double shipping = subtotal > 0 ? 150.0 : 0.0;
+        final double shipping = (subtotal - discount > 0 && subtotal - discount < 500) ? 150.0 : 0.0;
         final double total = (subtotal - discount + shipping) < 0 ? 0 : (subtotal - discount + shipping);
 
         return Column(
@@ -106,13 +108,23 @@ class CartView extends StatelessWidget {
   }
 
   Widget _buildCartItem(CartItem item) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(16),
-      ),
+    return GestureDetector(
+      onTap: () {
+        Get.to(() => ProductDetailsView(
+          id: item.id,
+          imagePath: item.imagePath,
+          name: item.name,
+          salePrice: item.price,
+          originalPrice: item.price,
+        ));
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(16),
+        ),
       child: Row(
         children: [
           // Image
@@ -128,7 +140,7 @@ class CartView extends StatelessWidget {
               child: item.imagePath.isEmpty
                   ? Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36)
                   : item.imagePath.startsWith('http')
-                      ? Image.network(item.imagePath, fit: BoxFit.contain, errorBuilder: (context, error, stackTrace) => Center(child: Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36)))
+                      ? CachedNetworkImage(imageUrl: item.imagePath, fit: BoxFit.contain, memCacheWidth: 160, placeholder: (c,u) => const SizedBox(), errorWidget: (c,u,e) => Center(child: Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36)))
                       : Image.asset(item.imagePath, fit: BoxFit.contain, errorBuilder: (context, error, stackTrace) => Center(child: Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36))),
             ),
           ),
@@ -187,13 +199,48 @@ class CartView extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Text(
-                      'Rs. ${(item.price * item.quantity).toInt()}',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (item.originalPrice != null && item.originalPrice! > item.price)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE53E3E), // Solid red
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  '-${((item.originalPrice! - item.price) / item.originalPrice! * 100).toInt()}%',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Rs. ${(item.originalPrice! * item.quantity).toInt()}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                  decoration: TextDecoration.lineThrough,
+                                ),
+                              ),
+                            ],
+                          ),
+                        Text(
+                          'Rs. ${(item.price * item.quantity).toInt()}',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -202,27 +249,22 @@ class CartView extends StatelessWidget {
           ),
           // Delete Button
           GestureDetector(
-            onTap: () async {
-              final confirm = await Get.dialog<bool>(
-                ConfirmationDialog(
-                  title: 'Remove ${item.name}?',
-                  cancelText: 'Cancel',
-                  confirmText: 'Remove',
-                  onConfirm: () => Get.back(result: true),
-                ),
-              );
-              if (confirm == true) {
-                cartController.removeItem(item);
-              }
+            onTap: () {
+              cartController.removeItem(item);
             },
-            child: Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: Icon(Icons.delete_outline, color: Colors.red.shade300, size: 22),
+            child: Container(
+              margin: const EdgeInsets.only(left: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.delete, color: Colors.red, size: 24),
             ),
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _quantityButton(String label, VoidCallback onTap) {
@@ -245,25 +287,7 @@ class CartView extends StatelessWidget {
         const Divider(color: Colors.black12),
         const SizedBox(height: 12),
 
-        // Order Note
-        SizedBox(
-          height: 48,
-          child: TextField(
-            decoration: InputDecoration(
-              hintText: 'Add order note (Optional)',
-              hintStyle: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-              prefixIcon: const Icon(Icons.receipt_long_outlined, color: Colors.black54, size: 20),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-            maxLines: 1,
-          ),
-        ),
 
-        const SizedBox(height: 12),
-        const Divider(color: Colors.black12),
-        const SizedBox(height: 12),
 
         // Promo Code
         Row(
@@ -296,6 +320,7 @@ class CartView extends StatelessWidget {
                     final success = await cartController.applyCoupon(code);
                     Get.back(); // close dialog
                     if (success) {
+                      cartController.promoController.clear();
                       Get.snackbar('Success', 'Coupon applied successfully!', backgroundColor: Colors.green, colorText: Colors.white);
                     } else {
                       Get.snackbar('Error', 'Invalid or expired coupon code.', backgroundColor: Colors.red, colorText: Colors.white);

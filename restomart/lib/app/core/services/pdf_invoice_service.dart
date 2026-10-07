@@ -3,14 +3,57 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:get/get.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../modules/orders/controllers/orders_controller.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 class PdfInvoiceService {
+  static String _sanitizeText(String text) {
+    return text
+        .replaceAll('&#8217;', "'")
+        .replaceAll('&#039;', "'")
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('’', "'")
+        .replaceAll('‘', "'")
+        .replaceAll('“', '"')
+        .replaceAll('”', '"')
+        .replaceAll('–', '-')
+        .replaceAll('—', '-');
+  }
+
+  static Future<Map<String, double>> _getLedgerInfo() async {
+    double balance = 0.0;
+    double totalDebit = 0.0;
+    double totalCredit = 0.0;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final uid = user?.uid;
+      if (uid != null && uid != 'guest') {
+        final doc = await FirebaseFirestore.instance.collection('ledger_accounts').doc(uid).get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          balance = (data['balance'] as num?)?.toDouble() ?? 0.0;
+          totalDebit = (data['totalDebit'] as num?)?.toDouble() ?? 0.0;
+          totalCredit = (data['totalCredit'] as num?)?.toDouble() ?? 0.0;
+        }
+      }
+    } catch (e) {
+      print('Error fetching ledger info for PDF: $e');
+    }
+    return {
+      'balance': balance,
+      'totalDebit': totalDebit,
+      'totalCredit': totalCredit,
+    };
+  }
+
   static Future<void> generateAndPrintInvoice(OrderModel order) async {
     final ByteData bytes = await rootBundle.load('assets/images/homePageLogo.webp');
     final Uint8List logoBytes = bytes.buffer.asUint8List();
     final logoImage = pw.MemoryImage(logoBytes);
+    final ledgerData = await _getLedgerInfo();
 
     final pdf = pw.Document();
 
@@ -40,11 +83,12 @@ class PdfInvoiceService {
                       pw.Text('INVOICE', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600)),
                       pw.Text('Order #${order.id}'),
                       pw.Text('Date: ${order.date.toLocal().toString().split(' ')[0]}'),
+                      pw.Text('Payment Method: ${order.paymentMethod}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
                     ]
                   )
                 ]
               ),
-              pw.SizedBox(height: 40),
+              pw.SizedBox(height: 30),
               
               // Table Header
               pw.Container(
@@ -69,7 +113,7 @@ class PdfInvoiceService {
                   padding: const pw.EdgeInsets.symmetric(vertical: 4),
                   child: pw.Row(
                     children: [
-                      pw.Expanded(flex: 3, child: pw.Text(item.name)),
+                      pw.Expanded(flex: 3, child: pw.Text(_sanitizeText(item.name))),
                       pw.Expanded(flex: 1, child: pw.Text('${item.quantity}', textAlign: pw.TextAlign.center)),
                       pw.Expanded(flex: 1, child: pw.Text('Rs ${item.price}', textAlign: pw.TextAlign.right)),
                       pw.Expanded(flex: 1, child: pw.Text('Rs ${(item.price * item.quantity).toStringAsFixed(2)}', textAlign: pw.TextAlign.right)),
@@ -83,7 +127,7 @@ class PdfInvoiceService {
                   padding: const pw.EdgeInsets.only(top: 10),
                   child: pw.Text('Special Instructions: ${order.specialInstructions}', style: pw.TextStyle(fontStyle: pw.FontStyle.italic, color: PdfColors.grey700)),
                 ),
-              pw.SizedBox(height: 20),
+              pw.SizedBox(height: 15),
               pw.Divider(color: PdfColors.grey300),
               pw.SizedBox(height: 10),
               
@@ -111,6 +155,53 @@ class PdfInvoiceService {
                   pw.Text('Rs ${order.total.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
                 ]
               ),
+
+              pw.SizedBox(height: 20),
+              
+              // Customer Business Khata (Ledger Summary Box)
+              pw.Container(
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey300),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                  color: PdfColors.grey100,
+                ),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Payment Details:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+                        pw.SizedBox(height: 3),
+                        pw.Text('Method: ${order.paymentMethod}', style: const pw.TextStyle(fontSize: 10)),
+                        pw.Text('Status: ${order.status.value}', style: const pw.TextStyle(fontSize: 10)),
+                      ],
+                    ),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text('Business Khata (Ledger Summary):', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+                        pw.SizedBox(height: 3),
+                        pw.Text('Total Purchased: Rs ${ledgerData['totalDebit']!.toStringAsFixed(2)}', style: const pw.TextStyle(fontSize: 10)),
+                        pw.Text('Total Paid: Rs ${ledgerData['totalCredit']!.toStringAsFixed(2)}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.green700)),
+                        pw.Text(
+                          (ledgerData['balance']! > 0)
+                              ? 'Outstanding Balance (Debt): Rs ${ledgerData['balance']!.toStringAsFixed(2)}'
+                              : (ledgerData['balance']! < 0)
+                                  ? 'Advance Surplus: Rs ${ledgerData['balance']!.abs().toStringAsFixed(2)}'
+                                  : 'Outstanding Balance: Rs 0.00',
+                          style: pw.TextStyle(
+                            fontSize: 11,
+                            fontWeight: pw.FontWeight.bold,
+                            color: ledgerData['balance']! > 0 ? PdfColors.red700 : PdfColors.green700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
               
               pw.Spacer(),
               
@@ -135,6 +226,7 @@ class PdfInvoiceService {
     final ByteData bytes = await rootBundle.load('assets/images/homePageLogo.webp');
     final Uint8List logoBytes = bytes.buffer.asUint8List();
     final logoImage = pw.MemoryImage(logoBytes);
+    final ledgerData = await _getLedgerInfo();
 
     final pdf = pw.Document();
 
@@ -163,11 +255,12 @@ class PdfInvoiceService {
                       pw.Text('INVOICE', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.grey600)),
                       pw.Text('Order #${order.id}'),
                       pw.Text('Date: ${order.date.toLocal().toString().split(' ')[0]}'),
+                      pw.Text('Payment Method: ${order.paymentMethod}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
                     ]
                   )
                 ]
               ),
-              pw.SizedBox(height: 40),
+              pw.SizedBox(height: 30),
               
               pw.Container(
                 decoration: const pw.BoxDecoration(
@@ -190,7 +283,7 @@ class PdfInvoiceService {
                   padding: const pw.EdgeInsets.symmetric(vertical: 4),
                   child: pw.Row(
                     children: [
-                      pw.Expanded(flex: 3, child: pw.Text(item.name)),
+                      pw.Expanded(flex: 3, child: pw.Text(_sanitizeText(item.name))),
                       pw.Expanded(flex: 1, child: pw.Text('${item.quantity}', textAlign: pw.TextAlign.center)),
                       pw.Expanded(flex: 1, child: pw.Text('Rs ${item.price}', textAlign: pw.TextAlign.right)),
                       pw.Expanded(flex: 1, child: pw.Text('Rs ${(item.price * item.quantity).toStringAsFixed(2)}', textAlign: pw.TextAlign.right)),
@@ -204,7 +297,7 @@ class PdfInvoiceService {
                   padding: const pw.EdgeInsets.only(top: 10),
                   child: pw.Text('Special Instructions: ${order.specialInstructions}', style: pw.TextStyle(fontStyle: pw.FontStyle.italic, color: PdfColors.grey700)),
                 ),
-              pw.SizedBox(height: 20),
+              pw.SizedBox(height: 15),
               pw.Divider(color: PdfColors.grey300),
               pw.SizedBox(height: 10),
               
@@ -230,6 +323,53 @@ class PdfInvoiceService {
                   pw.Text('Total Amount: ', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
                   pw.Text('Rs ${order.total.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
                 ]
+              ),
+
+              pw.SizedBox(height: 20),
+              
+              // Customer Business Khata (Ledger Summary Box)
+              pw.Container(
+                padding: const pw.EdgeInsets.all(10),
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: PdfColors.grey300),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
+                  color: PdfColors.grey100,
+                ),
+                child: pw.Row(
+                  mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                  children: [
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('Payment Details:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+                        pw.SizedBox(height: 3),
+                        pw.Text('Method: ${order.paymentMethod}', style: const pw.TextStyle(fontSize: 10)),
+                        pw.Text('Status: ${order.status.value}', style: const pw.TextStyle(fontSize: 10)),
+                      ],
+                    ),
+                    pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.end,
+                      children: [
+                        pw.Text('Business Khata (Ledger Summary):', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+                        pw.SizedBox(height: 3),
+                        pw.Text('Total Purchased: Rs ${ledgerData['totalDebit']!.toStringAsFixed(2)}', style: const pw.TextStyle(fontSize: 10)),
+                        pw.Text('Total Paid: Rs ${ledgerData['totalCredit']!.toStringAsFixed(2)}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.green700)),
+                        pw.Text(
+                          (ledgerData['balance']! > 0)
+                              ? 'Outstanding Balance (Debt): Rs ${ledgerData['balance']!.toStringAsFixed(2)}'
+                              : (ledgerData['balance']! < 0)
+                                  ? 'Advance Surplus: Rs ${ledgerData['balance']!.abs().toStringAsFixed(2)}'
+                                  : 'Outstanding Balance: Rs 0.00',
+                          style: pw.TextStyle(
+                            fontSize: 11,
+                            fontWeight: pw.FontWeight.bold,
+                            color: ledgerData['balance']! > 0 ? PdfColors.red700 : PdfColors.green700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
               
               pw.Spacer(),

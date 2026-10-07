@@ -12,9 +12,11 @@ import 'app/modules/cart/controllers/cart_controller.dart';
 import 'app/modules/orders/controllers/orders_controller.dart';
 import 'app/modules/favorites/controllers/favorites_controller.dart';
 import 'app/core/services/push_notification_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
 
   // Initialize Firebase safely
   try {

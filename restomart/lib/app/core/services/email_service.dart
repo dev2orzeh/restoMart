@@ -5,26 +5,43 @@ import 'package:get/get.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
 import '../../modules/orders/controllers/orders_controller.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class EmailService {
-  static const String _smtpUsername = 'frazliaqat1116@gmail.com'; 
-  static const String _smtpPassword = 'pudposbvnnpojuue'; // Gmail App Password
+  static String get _smtpHost => dotenv.env['SMTP_HOST'] ?? 'smtp.gmail.com';
+  static int get _smtpPort => int.tryParse(dotenv.env['SMTP_PORT'] ?? '465') ?? 465;
+  static String get _smtpUsername => dotenv.env['SMTP_USERNAME'] ?? ''; 
+  static String get _smtpPassword => dotenv.env['SMTP_PASSWORD'] ?? '';
+  static String get _fromEmail => dotenv.env['SMTP_FROM_EMAIL'] ?? (_smtpUsername.isNotEmpty ? _smtpUsername : 'ali@restomart.pk');
+
+  static SmtpServer _getSmtpServer() {
+    if (_smtpHost.contains('gmail.com')) {
+      return gmail(_smtpUsername, _smtpPassword);
+    }
+    return SmtpServer(
+      _smtpHost,
+      port: _smtpPort,
+      ssl: _smtpPort == 465,
+      username: _smtpUsername,
+      password: _smtpPassword,
+    );
+  }
 
   static Future<void> sendInvoiceEmail({
     required String recipientEmail,
     required OrderModel order,
     required Uint8List pdfBytes,
   }) async {
-    if (_smtpUsername == 'YOUR_EMAIL@gmail.com') {
+    if (_smtpUsername.isEmpty) {
       Get.snackbar(
-        'Email Setup Required',
-        'Please configure your SMTP credentials in EmailService to send emails.',
+        'Email Credentials Missing',
+        'Please set SMTP_USERNAME and SMTP_PASSWORD in your .env file.',
         snackPosition: SnackPosition.BOTTOM,
       );
       return;
     }
 
-    final smtpServer = gmail(_smtpUsername, _smtpPassword);
+    final smtpServer = _getSmtpServer();
 
     String itemsHtml = '';
     double subtotal = 0;
@@ -105,9 +122,9 @@ class EmailService {
 ''';
 
     final message = Message()
-      ..from = Address('ali@restomart.pk', 'RestoMart B2B')
+      ..from = Address(_fromEmail, 'RestoMart B2B')
       ..recipients.add(recipientEmail)
-      ..subject = 'Your RestoMart Order #${order.id} is confirmed! (${DateTime.now().toLocal().toString().split('.')[0]})'
+      ..subject = 'Your RestoMart Order #${order.id} is confirmed!'
       ..html = htmlBody
       ..attachments.add(
         StreamAttachment(
@@ -118,19 +135,26 @@ class EmailService {
 
     try {
       final sendReport = await send(message, smtpServer);
-      print('Message sent: ' + sendReport.toString());
+      print('Invoice Email sent successfully: ' + sendReport.toString());
     } on MailerException catch (e) {
-      print('Message not sent. \n' + e.toString());
+      print('SMTP Exception sending email: $e');
+      for (var p in e.problems) {
+        print('Problem: ${p.code}: ${p.msg}');
+      }
       Get.snackbar(
-        'Email Failed',
-        'Could not send the invoice email.',
+        'Email Warning',
+        'Invoice created, but email dispatch encountered an SMTP issue.',
         snackPosition: SnackPosition.BOTTOM,
       );
+    } catch (e) {
+      print('General Email error: $e');
     }
   }
 
   static Future<void> sendCancellationEmail(OrderModel order, String recipientEmail) async {
-    final smtpServer = gmail(_smtpUsername, _smtpPassword);
+    if (_smtpUsername.isEmpty) return;
+
+    final smtpServer = _getSmtpServer();
 
     final htmlBody = '''
 <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
@@ -150,7 +174,7 @@ class EmailService {
 ''';
 
     final message = Message()
-      ..from = Address('ali@restomart.pk', 'RestoMart B2B')
+      ..from = Address(_fromEmail, 'RestoMart B2B')
       ..recipients.add(recipientEmail)
       ..subject = 'Order Cancelled - #${order.id}'
       ..html = htmlBody;
@@ -159,18 +183,13 @@ class EmailService {
       await send(message, smtpServer);
       Get.snackbar(
         'Email Sent',
-        'Cancellation email has been sent to $recipientEmail',
+        'Cancellation email sent to $recipientEmail',
         snackPosition: SnackPosition.TOP,
         backgroundColor: Colors.green.shade50,
         colorText: Colors.green.shade900,
       );
     } catch (e) {
-      print('Cancellation email failed to send: ' + e.toString());
-      Get.snackbar(
-        'Email Failed',
-        'Could not send the cancellation email.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      print('Cancellation email failed to send: $e');
     }
   }
 }

@@ -3,6 +3,7 @@ import { Search, Eye, Calendar, ChevronDown, Download, Package, Clock, CheckCirc
 import StatusBadge from '../components/shared/StatusBadge';
 import Modal from '../components/shared/Modal';
 import InvoiceTemplate from '../components/shared/InvoiceTemplate';
+import Loader from '../components/shared/Loader';
 import { mockOrders } from '../data/mockData';
 import { subscribeToOrders, updateOrderStatus } from '../services/firebase';
 import { updateOrder, getOrders } from '../services/woocommerce';
@@ -12,6 +13,7 @@ const statusOptions = ['all', 'pending', 'processing', 'shipped', 'delivered', '
 const statusTimeline = {
   pending: 0,
   processing: 1,
+  shipped: 2,
   delivered: 3,
   cancelled: -1,
 };
@@ -25,40 +27,31 @@ const timelineSteps = [
 
 export default function Orders() {
   const [ordersData, setOrdersData] = useState([]); // Start empty for Firestore
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [invoiceOrder, setInvoiceOrder] = useState(null);
 
   useEffect(() => {
-    let isMounted = true;
-    
-    // Fetch live orders from WooCommerce
-    const fetchWooOrders = async () => {
-      try {
-        const liveOrders = await getOrders();
-        if (isMounted) {
-          if (liveOrders.length === 0) {
-            // Keep mock if absolutely 0 orders exist, just so UI has something to show in dev
-            setOrdersData(mockOrders);
-          } else {
-            setOrdersData(liveOrders);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch woo orders", e);
+    // Real-time listener for Firestore orders
+    const unsubscribe = subscribeToOrders((firebaseOrders) => {
+      if (firebaseOrders.length > 0) {
+        setOrdersData(firebaseOrders);
+        setLoading(false);
+      } else {
+        // Fallback to WooCommerce API fetch if Firestore is empty
+        getOrders().then((wooOrders) => {
+          setOrdersData(wooOrders.length > 0 ? wooOrders : mockOrders);
+          setLoading(false);
+        }).catch(err => {
+          console.error("Woo fetch error", err);
+          setLoading(false);
+        });
       }
-    };
-    
-    fetchWooOrders();
-    
-    // Optional polling for new orders every 30 seconds
-    const interval = setInterval(fetchWooOrders, 30000);
+    });
 
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
+    return () => unsubscribe();
   }, []);
 
   const filteredOrders = useMemo(() => {
@@ -69,12 +62,12 @@ export default function Orders() {
       orders = orders.filter(
         (o) =>
           o.id.toLowerCase().includes(q) ||
-          o.customer.toLowerCase().includes(q)
+          (o.customer && o.customer.toLowerCase().includes(q))
       );
     }
 
     if (statusFilter !== 'all') {
-      orders = orders.filter((o) => o.status === statusFilter);
+      orders = orders.filter((o) => (o.status || '').toLowerCase() === statusFilter.toLowerCase());
     }
 
     return orders;
@@ -86,7 +79,7 @@ export default function Orders() {
       o.id,
       o.customer,
       o.date,
-      o.items.length,
+      (o.items || []).length,
       o.total,
       o.status,
       o.payment,
@@ -150,6 +143,10 @@ export default function Orders() {
         </div>
       </div>
 
+      {loading ? (
+        <Loader message="Fetching orders..." />
+      ) : (
+      <>
       {/* Orders Table */}
       <div className="bg-white rounded-card shadow-card overflow-hidden">
         <div className="overflow-x-auto">
@@ -167,94 +164,99 @@ export default function Orders() {
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.map((order) => (
-                <tr
-                  key={order.id}
-                  className="hover:bg-surface/50 transition-colors group"
-                >
-                  <td className="table-cell font-semibold text-primary-500">
-                    {order.id}
-                  </td>
-                  <td className="table-cell">
-                    <div>
-                      <p className="font-medium text-text-primary">
-                        {order.customer}
-                      </p>
-                      <p className="text-xs text-text-muted">{order.phone}</p>
-                    </div>
-                  </td>
-                  <td className="table-cell text-text-secondary">
-                    {order.date}
-                  </td>
-                  <td className="table-cell text-center">
-                    <span className="text-sm font-medium">
-                      {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
-                    </span>
-                  </td>
-                  <td className="table-cell text-right font-semibold">
-                    ₨ {order.total.toLocaleString()}
-                  </td>
-                  <td className="table-cell text-center">
-                    <span className="badge bg-amber-50 text-amber-700">
-                      {order.payment}
-                    </span>
-                  </td>
-                  <td className="table-cell text-center">
-                    <StatusBadge status={order.status} />
-                  </td>
-                  <td className="table-cell text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <button
-                        onClick={() => setSelectedOrder(order)}
-                        className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4 text-text-secondary" />
-                      </button>
-                      {order.status === 'delivered' ? (
-                        <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-semibold px-2 py-1 bg-emerald-50 rounded-md border border-emerald-100">
-                          <CheckCircle className="w-3.5 h-3.5" /> Delivered
-                        </div>
-                      ) : (
-                        <select 
-                          className="text-xs border border-gray-200 rounded-md py-1 px-2 focus:ring-1 focus:ring-primary-500 bg-white"
-                          value={order.status}
-                          onChange={async (e) => {
-                            const newStatus = e.target.value;
-                            
-                            // Instantly update the local UI state so it doesn't snap back
-                            setOrdersData(prev => 
-                              prev.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
-                            );
-
-                            try {
-                              // WooCommerce doesn't natively support "shipped" or "delivered" by default
-                              // Map them to "completed" for the WooCommerce backend, but keep the exact status for Firebase
-                              let wooStatus = newStatus;
-                              if (newStatus === 'shipped' || newStatus === 'delivered') {
-                                wooStatus = 'completed';
-                              }
-
-                              await Promise.all([
-                                updateOrderStatus(order.id, newStatus),
-                                updateOrder(order.id, wooStatus)
-                              ]);
-                            } catch (error) {
-                              console.error("Failed to update status", error);
-                            }
-                          }}
+              {filteredOrders.map((order) => {
+                const st = (order.status || '').toLowerCase().trim();
+                const itemCount = (order.items || []).length;
+                return (
+                  <tr
+                    key={order.id}
+                    className="hover:bg-surface/50 transition-colors group"
+                  >
+                    <td className="table-cell font-semibold text-primary-500">
+                      {order.id}
+                    </td>
+                    <td className="table-cell">
+                      <div>
+                        <p className="font-medium text-text-primary">
+                          {order.customer || 'Customer'}
+                        </p>
+                        <p className="text-xs text-text-muted">{order.phone || ''}</p>
+                      </div>
+                    </td>
+                    <td className="table-cell text-text-secondary">
+                      {order.date}
+                    </td>
+                    <td className="table-cell text-center">
+                      <span className="text-sm font-medium">
+                        {itemCount} {itemCount === 1 ? 'item' : 'items'}
+                      </span>
+                    </td>
+                    <td className="table-cell text-right font-semibold">
+                      ₨ {parseFloat(order.total || 0).toLocaleString()}
+                    </td>
+                    <td className="table-cell text-center">
+                      <span className="badge bg-amber-50 text-amber-700">
+                        {order.payment || order.paymentMethod || 'Cash on delivery'}
+                      </span>
+                    </td>
+                    <td className="table-cell text-center">
+                      <StatusBadge status={order.status} />
+                    </td>
+                    <td className="table-cell text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => setSelectedOrder(order)}
+                          className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                          title="View Details"
                         >
-                          <option value="pending">Pending</option>
-                          <option value="processing">Processing</option>
-                          <option value="shipped">Shipped</option>
-                          <option value="delivered">Delivered</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                          <Eye className="w-4 h-4 text-text-secondary" />
+                        </button>
+                        {st === 'delivered' || st === 'completed' ? (
+                          <div className="flex items-center gap-1 text-emerald-600 text-xs font-semibold px-2.5 py-1 bg-emerald-50 rounded-md border border-emerald-100">
+                            <CheckCircle className="w-3.5 h-3.5" /> Delivered
+                          </div>
+                        ) : st === 'cancelled' ? (
+                          <div className="flex items-center gap-1 text-red-600 text-xs font-semibold px-2.5 py-1 bg-red-50 rounded-md border border-red-100">
+                            <XCircle className="w-3.5 h-3.5" /> Cancelled
+                          </div>
+                        ) : (
+                          <select 
+                            className="text-xs border border-gray-200 rounded-md py-1 px-2 focus:ring-1 focus:ring-primary-500 bg-white"
+                            value={st}
+                            onChange={async (e) => {
+                              const newStatus = e.target.value;
+                              
+                              setOrdersData(prev => 
+                                prev.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
+                              );
+
+                              try {
+                                let wooStatus = newStatus;
+                                if (newStatus === 'shipped' || newStatus === 'delivered') {
+                                  wooStatus = 'completed';
+                                }
+
+                                await Promise.all([
+                                  updateOrderStatus(order.id, newStatus),
+                                  updateOrder(order.id, wooStatus)
+                                ]);
+                              } catch (error) {
+                                console.error("Failed to update status", error);
+                              }
+                            }}
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="processing">Processing</option>
+                            <option value="shipped">Shipped</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
 
               {filteredOrders.length === 0 && (
                 <tr>
@@ -270,6 +272,8 @@ export default function Orders() {
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* View Order Modal */}
       <Modal
@@ -281,10 +285,11 @@ export default function Orders() {
         {selectedOrder && (
           <div className="space-y-6">
             {/* Status Timeline */}
-            {selectedOrder.status !== 'cancelled' ? (
+            {(selectedOrder.status || '').toLowerCase().trim() !== 'cancelled' ? (
               <div className="flex items-center justify-between">
                 {timelineSteps.map((step, i) => {
-                  const currentStep = statusTimeline[selectedOrder.status] ?? 0;
+                  const st = (selectedOrder.status || 'pending').toLowerCase().trim();
+                  const currentStep = statusTimeline[st] ?? 0;
                   const isActive = i <= currentStep;
                   const isLast = i === timelineSteps.length - 1;
 
@@ -310,7 +315,7 @@ export default function Orders() {
                 <XCircle className="w-5 h-5 text-red-500" />
                 <div>
                   <p className="text-sm font-semibold text-red-700">Order Cancelled</p>
-                  <p className="text-xs text-red-500">This order has been cancelled by the customer.</p>
+                  <p className="text-xs text-red-500">This order has been cancelled.</p>
                 </div>
               </div>
             )}
@@ -319,14 +324,14 @@ export default function Orders() {
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-surface rounded-xl p-4">
                 <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Customer</p>
-                <p className="text-sm font-semibold text-text-primary">{selectedOrder.customer}</p>
-                <p className="text-xs text-text-secondary mt-1">{selectedOrder.email}</p>
-                <p className="text-xs text-text-secondary">{selectedOrder.phone}</p>
+                <p className="text-sm font-semibold text-text-primary">{selectedOrder.customer || 'Customer'}</p>
+                <p className="text-xs text-text-secondary mt-1">{selectedOrder.email || 'N/A'}</p>
+                <p className="text-xs text-text-secondary">{selectedOrder.phone || 'N/A'}</p>
               </div>
               <div className="bg-surface rounded-xl p-4">
                 <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Order Info</p>
                 <p className="text-sm text-text-secondary"><span className="font-medium text-text-primary">Date:</span> {selectedOrder.date}</p>
-                <p className="text-sm text-text-secondary"><span className="font-medium text-text-primary">Payment:</span> {selectedOrder.payment}</p>
+                <p className="text-sm text-text-secondary"><span className="font-medium text-text-primary">Payment:</span> {selectedOrder.payment || selectedOrder.paymentMethod || 'Cash on delivery'}</p>
                 <p className="text-sm text-text-secondary"><span className="font-medium text-text-primary">Status:</span> <StatusBadge status={selectedOrder.status} /></p>
               </div>
             </div>
@@ -335,64 +340,70 @@ export default function Orders() {
             <div>
               <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-3">Order Items</p>
               <div className="space-y-2">
-                {selectedOrder.items.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 bg-surface rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium text-text-primary">{item.name}</p>
-                      <p className="text-xs text-text-muted">Qty: {item.qty} × ₨ {item.price.toLocaleString()}</p>
+                {(selectedOrder.items || []).map((item, i) => {
+                  const q = item.qty ?? item.quantity ?? 1;
+                  const p = item.price ?? 0;
+                  const itemTotal = q * p;
+                  return (
+                    <div key={i} className="flex items-center justify-between p-3 bg-surface rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">{item.name}</p>
+                        <p className="text-xs text-text-muted">Qty: {q} × ₨ {p.toLocaleString()}</p>
+                      </div>
+                      <p className="text-sm font-bold text-text-primary">₨ {itemTotal.toLocaleString()}</p>
                     </div>
-                    <p className="text-sm font-bold text-text-primary">₨ {(item.qty * item.price).toLocaleString()}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
             {/* Total */}
             <div className="flex justify-between items-center pt-4 border-t border-border">
               <span className="text-base font-bold text-text-primary">Total</span>
-              <span className="text-xl font-bold text-primary-500">₨ {selectedOrder.total.toLocaleString()}</span>
+              <span className="text-xl font-bold text-primary-500">₨ {parseFloat(selectedOrder.total || 0).toLocaleString()}</span>
             </div>
 
             {/* Actions */}
             <div className="flex gap-3 pt-2 justify-between items-center">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-text-secondary">Update Status:</span>
-                <select 
-                  className="input-field py-1.5 px-3 text-sm"
-                  value={selectedOrder.status}
-                  onChange={async (e) => {
-                    const newStatus = e.target.value;
-                    // Update in Firestore
-                    try {
-                      await Promise.all([
-                        updateOrderStatus(selectedOrder.id, newStatus),
-                        updateOrder(selectedOrder.id, newStatus)
-                      ]);
-                      setSelectedOrder({ ...selectedOrder, status: newStatus });
-                    } catch (error) {
-                      // Fallback for mock data testing if Firestore doc doesn't exist
-                      const updatedOrders = ordersData.map(o => 
-                        o.id === selectedOrder.id ? { ...o, status: newStatus } : o
-                      );
-                      setOrdersData(updatedOrders);
-                      setSelectedOrder({ ...selectedOrder, status: newStatus });
-                    }
-                  }}
-                >
-                  <option value="pending">Pending</option>
-                  <option value="processing">Processing</option>
-                  <option value="shipped">Shipped</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </div>
+              {(selectedOrder.status || '').toLowerCase().trim() !== 'cancelled' && 
+               (selectedOrder.status || '').toLowerCase().trim() !== 'delivered' && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-text-secondary">Update Status:</span>
+                  <select 
+                    className="input-field py-1.5 px-3 text-sm"
+                    value={(selectedOrder.status || 'pending').toLowerCase()}
+                    onChange={async (e) => {
+                      const newStatus = e.target.value;
+                      try {
+                        await Promise.all([
+                          updateOrderStatus(selectedOrder.id, newStatus),
+                          updateOrder(selectedOrder.id, newStatus)
+                        ]);
+                        setSelectedOrder({ ...selectedOrder, status: newStatus });
+                      } catch (error) {
+                        const updatedOrders = ordersData.map(o => 
+                          o.id === selectedOrder.id ? { ...o, status: newStatus } : o
+                        );
+                        setOrdersData(updatedOrders);
+                        setSelectedOrder({ ...selectedOrder, status: newStatus });
+                      }
+                    }}
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="processing">Processing</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="delivered">Delivered</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
+              )}
 
               <button
                 onClick={() => {
                   setSelectedOrder(null);
                   setInvoiceOrder(selectedOrder);
                 }}
-                className="btn-primary flex items-center gap-2"
+                className="btn-primary flex items-center gap-2 ml-auto"
               >
                 <Download className="w-4 h-4" />
                 Download Invoice

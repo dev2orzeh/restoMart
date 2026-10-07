@@ -52,11 +52,7 @@ class MainLayoutScreen extends GetView<MainController> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
-        titleSpacing: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.grid_view_rounded, color: Color(0xFF25258F)),
-          onPressed: () {},
-        ),
+        titleSpacing: 16,
         title: Image.asset(
           'assets/images/homePageLogo.webp',
           height: 28,
@@ -176,8 +172,8 @@ class MainLayoutScreen extends GetView<MainController> {
               child: GestureDetector(
                 onTap: () => Get.to(() => CartView()),
                 child: Container(
-                  height: 60,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  height: 48,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFC400),
                     borderRadius: BorderRadius.circular(12),
@@ -218,13 +214,13 @@ class MainLayoutScreen extends GetView<MainController> {
                           ),
                         ],
                       ),
-                      const SizedBox(width: 32),
+                      const SizedBox(width: 20),
                       const Text(
                         'View cart',
                         style: TextStyle(
                           color: Color(0xFF25258F),
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: 14,
                         ),
                       ),
                       const Spacer(),
@@ -233,11 +229,11 @@ class MainLayoutScreen extends GetView<MainController> {
                         style: const TextStyle(
                           color: Color(0xFF25258F),
                           fontWeight: FontWeight.w900,
-                          fontSize: 16,
+                          fontSize: 14,
                         ),
                       ),
                       const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward, color: Color(0xFF25258F), size: 20),
+                      const Icon(Icons.arrow_forward, color: Color(0xFF25258F), size: 16),
                     ],
                   ),
                 ),

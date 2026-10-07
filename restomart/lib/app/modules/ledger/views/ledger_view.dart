@@ -157,7 +157,7 @@ class LedgerView extends StatelessWidget {
                       itemBuilder: (context, index) {
                         final txn = controller.transactions[index];
                         final isDebit = txn['type'] == 'debit';
-                        final amount = (txn['amount'] ?? 0.0) as double;
+                        final amount = (txn['amount'] as num?)?.toDouble() ?? 0.0;
                         
                         DateTime date = DateTime.now();
                         if (txn['date'] != null) {

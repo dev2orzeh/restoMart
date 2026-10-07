@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:get/get.dart';
 import '../core/constants/app_colors.dart';
 import '../core/constants/app_text_styles.dart';
@@ -82,7 +83,13 @@ class ProductCard extends StatelessWidget {
                     child: imagePath.isEmpty
                       ? const Icon(Icons.image_not_supported, color: Colors.grey)
                       : imagePath.startsWith('http')
-                        ? Image.network(imagePath, fit: BoxFit.contain, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey))
+                        ? CachedNetworkImage(
+                            imageUrl: imagePath,
+                            fit: BoxFit.contain,
+                            memCacheWidth: 240,
+                            placeholder: (context, url) => const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                            errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.grey),
+                          )
                         : Image.asset(imagePath, fit: BoxFit.contain, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey)),
                   ),
                 ),
@@ -196,55 +203,101 @@ class ProductCard extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 4),
-
-          // Add to Cart Button
-          SizedBox(
-            width: double.infinity,
-            height: 32,
-            child: OutlinedButton(
-              onPressed: () {
-                try {
-                  final cartController = Get.find<CartController>();
-                  cartController.addToCart(id, imagePath, name, salePrice, 1);
-                  Get.snackbar(
-                    'Added to Cart',
-                    '1 x $name added to your cart.',
-                    snackPosition: SnackPosition.TOP,
-                    backgroundColor: Colors.green.shade600,
-                    colorText: Colors.white,
-                    margin: const EdgeInsets.all(16),
-                    mainButton: TextButton(
-                      onPressed: () {
-                        if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
-                        Get.to(() => CartView());
-                      },
-                      child: const Text(
-                        'VIEW CART',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  );
-                } catch (e) {
-                  onAddToCart();
-                }
-              },
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.primary),
-                shape: RoundedRectangleBorder(
+          // Add to Cart Button (pushed to bottom)
+          const Spacer(),
+          Obx(() {
+            final cartController = Get.isRegistered<CartController>() 
+                ? Get.find<CartController>() 
+                : Get.put(CartController());
+                
+            final isInCart = cartController.isInCart(name);
+            
+            if (isInCart) {
+              final quantity = cartController.getProductQuantity(name);
+              return Container(
+                height: 32,
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.primary),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                padding: EdgeInsets.zero,
-              ),
-              child: Text(
-                'Add to cart',
-                style: AppTextStyles.buttonMedium.copyWith(
-                  fontSize: 13,
-                  color: AppColors.primary,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    InkWell(
+                      onTap: () {
+                        final item = cartController.cartItems.firstWhere((i) => i.name == name);
+                        cartController.decreaseQuantity(item);
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12.0),
+                        child: Icon(Icons.remove, size: 16, color: AppColors.primary),
+                      ),
+                    ),
+                    Text(
+                      '$quantity',
+                      style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    InkWell(
+                      onTap: () {
+                        final item = cartController.cartItems.firstWhere((i) => i.name == name);
+                        cartController.increaseQuantity(item);
+                      },
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12.0),
+                        child: Icon(Icons.add, size: 16, color: AppColors.primary),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return SizedBox(
+              width: double.infinity,
+              height: 32,
+              child: OutlinedButton(
+                onPressed: () {
+                  try {
+                    cartController.addToCart(id, imagePath, name, salePrice, 1, originalPrice: originalPrice);
+                    Get.snackbar(
+                      'Added to Cart',
+                      '1 x $name added to your cart.',
+                      snackPosition: SnackPosition.TOP,
+                      backgroundColor: Colors.green.shade600,
+                      colorText: Colors.white,
+                      margin: const EdgeInsets.all(16),
+                      mainButton: TextButton(
+                        onPressed: () {
+                          if (Get.isSnackbarOpen) Get.closeCurrentSnackbar();
+                          Get.to(() => CartView());
+                        },
+                        child: const Text(
+                          'VIEW CART',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    );
+                  } catch (e) {
+                    onAddToCart();
+                  }
+                },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppColors.primary),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  padding: EdgeInsets.zero,
+                ),
+                child: Text(
+                  'Add to cart',
+                  style: AppTextStyles.buttonMedium.copyWith(
+                    fontSize: 13,
+                    color: AppColors.primary,
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ),
     ),

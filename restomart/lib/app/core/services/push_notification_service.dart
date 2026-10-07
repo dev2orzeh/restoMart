@@ -5,7 +5,10 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../modules/main/controllers/notifications_controller.dart';
+import '../../modules/ledger/views/ledger_view.dart';
+import '../../modules/orders/views/orders_view.dart';
 import 'woocommerce_api_service.dart';
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -55,6 +58,11 @@ class PushNotificationService {
       settings: initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         log("Notification clicked: ${response.payload}");
+        if (response.payload == 'ledger_view') {
+          Get.to(() => const LedgerView());
+        } else if (response.payload == 'order_view') {
+          Get.to(() => const OrdersView());
+        }
       },
     );
 
@@ -103,7 +111,7 @@ class PushNotificationService {
       String? token = await _firebaseMessaging.getToken();
       log("FCM Token: $token");
       if (token != null) {
-        _syncTokenWithWooCommerce(token);
+        _syncTokenWithFirebase(token);
       }
     } catch (e) {
       log("Failed to get FCM token: $e");
@@ -112,14 +120,23 @@ class PushNotificationService {
     // Listen for token refreshes
     _firebaseMessaging.onTokenRefresh.listen((newToken) {
       log("FCM Token Refreshed: $newToken");
-      _syncTokenWithWooCommerce(newToken);
+      _syncTokenWithFirebase(newToken);
     });
   }
 
-  static void _syncTokenWithWooCommerce(String token) {
+  static void _syncTokenWithFirebase(String token) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       WooCommerceApiService.syncDeviceToken(user.uid, token);
+      try {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'fcmToken': token,
+          'lastTokenUpdate': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+        log("FCM Token saved to Firestore for user ${user.uid}");
+      } catch (e) {
+        log("Failed to save FCM token to Firestore: $e");
+      }
     }
   }
 
@@ -143,6 +160,7 @@ class PushNotificationService {
       title: 'Order Placed! 📝',
       body: 'Your order #$orderId has been successfully placed and is pending approval.',
       notificationDetails: platformDetails,
+      payload: 'order_view',
     );
 
     // Save to in-app notifications screen
@@ -152,6 +170,7 @@ class PushNotificationService {
         description: 'Your order #$orderId has been successfully placed and is pending approval.',
         icon: Icons.check_circle,
         color: const Color(0xFF4CAF50),
+        action: 'order_view',
       );
     }
   }
@@ -185,6 +204,11 @@ class PushNotificationService {
       body = 'Your order #$orderId has been delivered. Enjoy!';
       iconData = Icons.check_circle;
       iconColor = const Color(0xFF4CAF50);
+    } else if (status.toLowerCase() == 'cancelled') {
+      title = 'Order Cancelled ❌';
+      body = 'Your order #$orderId has been cancelled.';
+      iconData = Icons.cancel;
+      iconColor = const Color(0xFFF44336);
     } else if (status.toLowerCase() == 'payment confirmed' || status.toLowerCase() == 'paid') {
       title = 'Payment Confirmed 💳';
       body = 'Payment for order #$orderId has been received.';
@@ -197,6 +221,7 @@ class PushNotificationService {
       title: title,
       body: body,
       notificationDetails: platformDetails,
+      payload: 'order_view',
     );
 
     // Save to in-app notifications screen
@@ -206,6 +231,7 @@ class PushNotificationService {
         description: body,
         icon: iconData,
         color: iconColor,
+        action: 'order_view',
       );
     }
   }
@@ -232,6 +258,7 @@ class PushNotificationService {
       title: 'Payment Recorded! 💰',
       body: 'We received your payment of Rs. $amountStr. New balance: Rs. $balanceStr.',
       notificationDetails: platformDetails,
+      payload: 'ledger_view',
     );
 
     // Save to in-app notifications screen
@@ -241,6 +268,44 @@ class PushNotificationService {
         description: 'We received your payment of Rs. $amountStr. New balance: Rs. $balanceStr.',
         icon: Icons.account_balance_wallet,
         color: const Color(0xFF4CAF50),
+        action: 'ledger_view',
+      );
+    }
+  }
+
+  static Future<void> showLedgerDebitNotification(double amount, double newBalance, String desc) async {
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'restomart_high_importance_channel',
+      'RestoMart Alerts',
+      channelDescription: 'Important notifications like order status updates.',
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@mipmap/ic_launcher',
+    );
+
+    const NotificationDetails platformDetails = NotificationDetails(
+      android: androidDetails,
+    );
+
+    final amountStr = amount.toStringAsFixed(0);
+    final balanceStr = newBalance.toStringAsFixed(0);
+
+    await _localNotificationsPlugin.show(
+      id: DateTime.now().millisecond, // unique ID
+      title: 'New Khata Entry 📖',
+      body: '$desc recorded (Rs. $amountStr). Outstanding balance: Rs. $balanceStr.',
+      notificationDetails: platformDetails,
+      payload: 'ledger_view',
+    );
+
+    // Save to in-app notifications screen
+    if (Get.isRegistered<NotificationsController>()) {
+      Get.find<NotificationsController>().addNotification(
+        title: 'New Khata Entry 📖',
+        description: '$desc recorded (Rs. $amountStr). Outstanding balance: Rs. $balanceStr.',
+        icon: Icons.menu_book_rounded,
+        color: const Color(0xFF3F51B5),
+        action: 'ledger_view',
       );
     }
   }

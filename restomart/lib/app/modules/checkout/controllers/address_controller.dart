@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:convert';
 
 class AddressController extends GetxController {
@@ -9,29 +10,55 @@ class AddressController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _loadAddresses();
+    loadAddressesForCurrentUser();
+
+    // Reload when auth state changes
+    FirebaseAuth.instance.authStateChanges().listen((User? user) {
+      loadAddressesForCurrentUser();
+    });
   }
 
-  Future<void> _loadAddresses() async {
+  String _getStorageKey() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null && uid.isNotEmpty) {
+      return 'saved_addresses_$uid';
+    }
+    return 'saved_addresses_guest';
+  }
+
+  Future<void> loadAddressesForCurrentUser() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? addressesJson = prefs.getString('saved_addresses');
+    final key = _getStorageKey();
+    final String? addressesJson = prefs.getString(key);
     
-    if (addressesJson != null) {
-      final List<dynamic> decoded = jsonDecode(addressesJson);
-      savedAddresses.value = decoded.map((e) => Map<String, String>.from(e)).toList();
+    if (addressesJson != null && addressesJson.isNotEmpty) {
+      try {
+        final List<dynamic> decoded = jsonDecode(addressesJson);
+        final loaded = decoded.map((e) => Map<String, String>.from(e)).toList();
+        
+        // Remove legacy hardcoded dummy addresses from previous versions
+        loaded.removeWhere((addr) => 
+          (addr['label']?.contains('Karachi Kitchen') ?? false) || 
+          (addr['address']?.contains('DHA Phase 6') ?? false)
+        );
+
+        savedAddresses.value = loaded;
+        if (selectedAddressIndex.value >= loaded.length) {
+          selectedAddressIndex.value = 0;
+        }
+      } catch (e) {
+        savedAddresses.clear();
+      }
     } else {
-      // Default mock data
-      savedAddresses.value = [
-        {'label': 'Karachi Kitchen - Main', 'address': 'DHA Phase 6, Main Boulevard, Lahore'},
-        {'label': 'Karachi Kitchen - Branch', 'address': 'Gulberg III, Near Hafeez Center, Lahore'},
-      ];
-      _saveToStorage();
+      savedAddresses.clear();
+      selectedAddressIndex.value = 0;
     }
   }
 
   Future<void> _saveToStorage() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('saved_addresses', jsonEncode(savedAddresses));
+    final key = _getStorageKey();
+    await prefs.setString(key, jsonEncode(savedAddresses));
   }
 
   void addAddress(String label, String address) {
@@ -46,8 +73,18 @@ class AddressController extends GetxController {
     }
   }
 
+  void clearAll() {
+    savedAddresses.clear();
+    selectedAddressIndex.value = 0;
+  }
+
   Map<String, String>? get selectedAddress {
     if (savedAddresses.isEmpty) return null;
-    return savedAddresses[selectedAddressIndex.value];
+    final idx = selectedAddressIndex.value;
+    if (idx >= 0 && idx < savedAddresses.length) {
+      return savedAddresses[idx];
+    }
+    return savedAddresses.first;
   }
 }
+

@@ -1,4 +1,8 @@
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get/get.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_text_styles.dart';
@@ -8,6 +12,7 @@ import '../../favorites/views/favorites_view.dart';
 import '../../auth/controllers/auth_controller.dart';
 import 'edit_profile_view.dart';
 import '../../ledger/views/ledger_view.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AccountView extends StatelessWidget {
   const AccountView({super.key});
@@ -67,14 +72,7 @@ class AccountView extends StatelessWidget {
                             // Profile Image - Tappable
                             GestureDetector(
                               onTap: () {
-                                Get.snackbar(
-                                  'Profile Photo',
-                                  'Profile photo upload requires a backend storage bucket which will be linked soon.',
-                                  snackPosition: SnackPosition.BOTTOM,
-                                  backgroundColor: Colors.white,
-                                  colorText: Colors.black87,
-                                  margin: const EdgeInsets.all(16),
-                                );
+                                authController.pickProfileImage();
                               },
                               child: Stack(
                                 children: [
@@ -84,16 +82,19 @@ class AccountView extends StatelessWidget {
                                     child: CircleAvatar(
                                       radius: 35,
                                       backgroundColor: const Color(0xFFFFD54F),
-                                      child: Text(
-                                        authController.userName.value.isNotEmpty 
-                                          ? authController.userName.value.substring(0, 1).toUpperCase() 
-                                          : 'U',
-                                        style: const TextStyle(
-                                          color: Color(0xFF25258F),
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
+                                      backgroundImage: _getProfileImageProvider(authController.profileImagePath.value),
+                                      child: _getProfileImageProvider(authController.profileImagePath.value) == null 
+                                          ? Text(
+                                              authController.userName.value.isNotEmpty 
+                                                ? authController.userName.value.substring(0, 1).toUpperCase() 
+                                                : 'U',
+                                              style: const TextStyle(
+                                                color: Color(0xFF25258F),
+                                                fontSize: 24,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            )
+                                          : null,
                                     ),
                                   ),
                                   Positioned(
@@ -118,9 +119,29 @@ class AccountView extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    authController.userName.value,
-                                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          authController.userName.value,
+                                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (authController.businessName.value.isNotEmpty)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFFD54F),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            authController.businessName.value,
+                                            style: const TextStyle(color: Color(0xFF25258F), fontSize: 16, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
@@ -253,6 +274,7 @@ class AccountView extends StatelessWidget {
                 }),
                 _buildMenuItem(Icons.payment, 'Payment Methods', 'Manage cards and wallets'),
                 _buildMenuItem(Icons.notifications_outlined, 'Notifications', 'App alert settings', onTap: () {
+                  final notifCtrl = Get.put(AppAlertsController());
                   Get.bottomSheet(
                     Container(
                       padding: const EdgeInsets.all(24),
@@ -268,37 +290,27 @@ class AccountView extends StatelessWidget {
                           const SizedBox(height: 8),
                           const Text('Would you like to receive order updates and promotional alerts?', style: TextStyle(color: Colors.grey)),
                           const SizedBox(height: 24),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: () {
-                                    Get.back();
-                                    Get.snackbar('Notifications', 'Notifications turned OFF.', snackPosition: SnackPosition.BOTTOM);
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                  child: const Text('Turn Off', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-                                ),
+                          Obx(() => SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Push Notifications', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF25258F))),
+                            subtitle: Text(notifCtrl.isEnabled.value ? 'Alerts are currently ON' : 'Alerts are currently OFF', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            value: notifCtrl.isEnabled.value,
+                            activeColor: const Color(0xFF25258F),
+                            onChanged: (val) {
+                              notifCtrl.toggle(val);
+                            },
+                          )),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () => Get.back(),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    Get.back();
-                                    Get.snackbar('Notifications', 'Notifications turned ON.', snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.green, colorText: Colors.white);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF25258F),
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                  child: const Text('Turn On', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                ),
-                              ),
-                            ],
+                              child: const Text('Close', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                            ),
                           ),
                         ],
                       ),
@@ -342,10 +354,15 @@ class AccountView extends StatelessWidget {
                       textConfirm: 'Log Out',
                       confirmTextColor: AppColors.primary,
                       buttonColor: AppColors.accent,
-                      onConfirm: () {
-                        // Actually log the user out
+                      onConfirm: () async {
+                        if (Get.isDialogOpen ?? false) {
+                          Get.back();
+                        }
+                        if (!Get.isRegistered<AuthController>()) {
+                          Get.put(AuthController());
+                        }
                         final authController = Get.find<AuthController>();
-                        authController.logout();
+                        await authController.logout();
                       },
                     );
                   },
@@ -501,6 +518,26 @@ class AccountView extends StatelessWidget {
       },
     );
   }
+
+  ImageProvider? _getProfileImageProvider(String path) {
+    if (path.isEmpty) return null;
+    try {
+      if (path.startsWith('data:image')) {
+        final clean = path.split(',').last;
+        return MemoryImage(base64Decode(clean));
+      } else if (path.startsWith('http')) {
+        return NetworkImage(path);
+      } else {
+        final file = File(path);
+        if (file.existsSync()) {
+          return FileImage(file);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error parsing profile image provider: $e');
+    }
+    return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -573,23 +610,21 @@ class AboutRestoMartView extends StatelessWidget {
             // Contact Info
             const Text('Contact Us', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF25258F))),
             const SizedBox(height: 16),
-            _buildContactRow(Icons.phone, 'Call / WhatsApp', '0321-1655556 • 0321-0655555'),
+            _buildContactRow(Icons.phone, 'Call / WhatsApp', '0321-1655556 • 0321-0655555', onTap: () => _launchUrl('tel:+923211655556')),
             const SizedBox(height: 12),
-            _buildContactRow(Icons.location_on, 'Location', '12 G Gulberg Center, Opposite Hafeez Center, Gulberg III, Lahore'),
+            _buildContactRow(Icons.location_on, 'Location', '12 G Gulberg Center, Opposite Hafeez Center, Gulberg III, Lahore', onTap: () => _launchUrl('https://maps.google.com/?q=12+G+Gulberg+Center+Lahore')),
             const SizedBox(height: 32),
 
             // Social Links
             const Text('Follow Us', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF25258F))),
             const SizedBox(height: 16),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildSocialIcon('assets/images/whatsapp.webp', 'WhatsApp', const Color(0xFF25D366)),
-                const SizedBox(width: 12),
-                _buildSocialIcon('assets/images/facebook.jpg', 'Facebook', const Color(0xFF1877F2)),
-                const SizedBox(width: 12),
-                _buildSocialIcon('assets/images/instagram.jpg', 'Instagram', const Color(0xFFE4405F)),
-                const SizedBox(width: 12),
-                _buildSocialIcon('assets/images/tiktok.png', 'TikTok', Colors.black87),
+                _buildSocialIcon('assets/images/whatsapp_new.png', 'WhatsApp', const Color(0xFF25D366), () => _launchUrl('https://wa.me/923211655556')),
+                _buildSocialIcon('assets/images/facebook.jpg', 'Facebook', const Color(0xFF1877F2), () => _launchUrl('https://www.facebook.com/restomart.lhr')),
+                _buildSocialIcon('assets/images/instagram.jpg', 'Instagram', const Color(0xFFE4405F), () => _launchUrl('https://www.instagram.com/restomart.pk')),
+                _buildSocialIcon('assets/images/tiktok.png', 'TikTok', Colors.black87, () => _launchUrl('https://www.tiktok.com/@restomart')),
               ],
             ),
             const SizedBox(height: 32),
@@ -604,6 +639,15 @@ class AboutRestoMartView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      Get.snackbar('Error', 'Could not open the link.', snackPosition: SnackPosition.BOTTOM);
+    }
   }
 
   Widget _buildInfoCard({required IconData icon, required String title, required String body}) {
@@ -630,44 +674,55 @@ class AboutRestoMartView extends StatelessWidget {
     );
   }
 
-  Widget _buildContactRow(IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: const Color(0xFF25258F), size: 20),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 2),
-              Text(value, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-            ],
+  Widget _buildContactRow(IconData icon, String label, String value, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFF25258F), size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                const SizedBox(height: 2),
+                Text(value, style: TextStyle(fontSize: 13, color: onTap != null ? const Color(0xFF25258F) : Colors.grey.shade600, decoration: onTap != null ? TextDecoration.underline : TextDecoration.none)),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildSocialIcon(String imagePath, String label, Color color) {
-    return Column(
-      children: [
-        Container(
-          width: 48, height: 48,
-          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Image.asset(
-              imagePath,
-              fit: BoxFit.contain,
-              errorBuilder: (_,__,___) => Icon(Icons.link, color: color, size: 24),
-            ),
+  Widget _buildSocialIcon(String imagePath, String label, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        children: [
+          SizedBox(
+            width: 52,
+            height: 52,
+            child: imagePath.startsWith('http')
+                ? Image.network(
+                    imagePath,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_,__,___) => Icon(Icons.link, color: color, size: 52),
+                  )
+                : Image.asset(
+                    imagePath,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_,__,___) => Icon(Icons.link, color: color, size: 52),
+                  ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
-      ],
+          const SizedBox(height: 6),
+          Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade700, fontWeight: FontWeight.w500)),
+        ],
+      ),
     );
   }
 }
@@ -720,33 +775,56 @@ class HelpCenterView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Need Help?', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                  const Text('Call or WhatsApp', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text('Our support team is here for you.\nMon - Sat, 9 AM - 8 PM', style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13, height: 1.4)),
+                  const Text('03211655556 – 03210655555', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      ElevatedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(Icons.phone, size: 16),
-                        label: const Text('Call Us'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFD54F),
-                          foregroundColor: const Color(0xFF25258F),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final Uri launchUri = Uri(scheme: 'tel', path: '03211655556');
+                            try {
+                              await launchUrl(launchUri);
+                            } catch (e) {
+                              Get.snackbar('Error', 'Could not open dialer.', snackPosition: SnackPosition.BOTTOM, colorText: Colors.white, backgroundColor: Colors.red);
+                            }
+                          },
+                          icon: const Icon(Icons.phone, size: 16),
+                          label: const Text('Call Us'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFFD54F),
+                            foregroundColor: const Color(0xFF25258F),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            elevation: 0,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
-                      OutlinedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(Icons.chat_bubble_outline, size: 16),
-                        label: const Text('WhatsApp'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: Colors.white54),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final Uri whatsappUrl = Uri.parse("https://wa.me/923211655556");
+                            try {
+                              await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+                            } catch (e) {
+                              Get.snackbar('Error', 'WhatsApp could not be opened.', snackPosition: SnackPosition.BOTTOM, colorText: Colors.white, backgroundColor: Colors.red);
+                            }
+                          },
+                          icon: Image.asset(
+                            'assets/images/whatsapp_new.png',
+                            width: 24,
+                            height: 24,
+                          ),
+                          label: const Text('WhatsApp'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: const BorderSide(color: Colors.white54),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
                         ),
                       ),
                     ],
@@ -782,3 +860,42 @@ class HelpCenterView extends StatelessWidget {
     );
   }
 }
+
+class AppAlertsController extends GetxController {
+  final isEnabled = false.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _loadState();
+  }
+
+  Future<void> _loadState() async {
+    final prefs = await SharedPreferences.getInstance();
+    isEnabled.value = prefs.getBool('notifications_enabled') ?? false;
+  }
+
+  Future<void> toggle(bool value) async {
+    if (value) {
+      final settings = await FirebaseMessaging.instance.requestPermission();
+      if (settings.authorizationStatus == AuthorizationStatus.authorized || settings.authorizationStatus == AuthorizationStatus.provisional) {
+        isEnabled.value = true;
+        // Optionally fetch token to re-register on server
+        await FirebaseMessaging.instance.getToken();
+        Get.snackbar('Notifications Enabled', 'You will now receive alerts.', snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.green.shade50, colorText: Colors.green.shade800);
+      } else {
+        isEnabled.value = false;
+        Get.snackbar('Permission Denied', 'Please enable notifications in your device settings.', snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.red.shade50, colorText: Colors.red.shade800);
+      }
+    } else {
+      isEnabled.value = false;
+      // This actually stops push notifications for this app instance
+      await FirebaseMessaging.instance.deleteToken();
+      Get.snackbar('Notifications Disabled', 'You will no longer receive alerts.', snackPosition: SnackPosition.BOTTOM);
+    }
+    
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notifications_enabled', isEnabled.value);
+  }
+}
+

@@ -83,6 +83,7 @@ class OrderTrackingView extends StatelessWidget {
                           icon: const Icon(Icons.download, size: 18),
                           label: const Text('Invoice'),
                           style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(0, 48),
                             foregroundColor: AppColors.primary,
                             side: const BorderSide(color: AppColors.primary),
                             shape: RoundedRectangleBorder(
@@ -102,6 +103,7 @@ class OrderTrackingView extends StatelessWidget {
                           icon: const Icon(Icons.refresh, size: 18),
                           label: const Text('Reorder'),
                           style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(0, 48),
                             backgroundColor: AppColors.primary,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
@@ -212,6 +214,19 @@ class OrderTrackingView extends StatelessWidget {
                                   snackPosition: SnackPosition.BOTTOM,
                                   backgroundColor: Colors.orange.shade50,
                                   colorText: Colors.orange.shade900,
+                                );
+                                return;
+                              }
+
+                              final timeSinceOrder = DateTime.now().difference(liveOrder.date);
+                              if (timeSinceOrder.inMinutes > 30) {
+                                Get.snackbar(
+                                  'Cancellation Timeout',
+                                  'Orders can only be cancelled within 30 minutes of placing them. Please contact support.',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.orange.shade50,
+                                  colorText: Colors.orange.shade900,
+                                  duration: const Duration(seconds: 4),
                                 );
                                 return;
                               }

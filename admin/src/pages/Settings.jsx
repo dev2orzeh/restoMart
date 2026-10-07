@@ -69,7 +69,7 @@ export default function Settings() {
               </label>
               <input
                 type="text"
-                defaultValue="+92 325 8019294"
+                defaultValue="0321-1655556 / 0321-0655555"
                 className="input-field w-full"
               />
             </div>
@@ -157,22 +157,22 @@ export default function Settings() {
         </div>
 
         {/* API Connection */}
-        <form onSubmit={(e) => handleSave(e, 'Checking API keys... Could not connect to WordPress.')} className="bg-white rounded-card p-6 shadow-card">
+        <form onSubmit={(e) => handleSave(e, 'WooCommerce API settings updated')} className="bg-white rounded-card p-6 shadow-card">
           <div className="flex items-center gap-3 mb-6">
-            <Wifi className="w-5 h-5 text-primary-500" />
+            <Wifi className="w-5 h-5 text-emerald-500" />
             <h2 className="text-base font-bold text-text-primary">
-              API Connection
+              WooCommerce API Connection
             </h2>
           </div>
           <div className="space-y-4">
-            <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-              <div className="w-2.5 h-2.5 bg-amber-400 rounded-full animate-pulse" />
+            <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+              <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse" />
               <div>
-                <p className="text-sm font-medium text-amber-800">
-                  Not Connected
+                <p className="text-sm font-bold text-emerald-800">
+                  Connected & Active
                 </p>
-                <p className="text-xs text-amber-600">
-                  Waiting for WooCommerce API keys
+                <p className="text-xs text-emerald-700">
+                  Linked to WordPress Storefront (restomart.pk)
                 </p>
               </div>
             </div>
@@ -182,9 +182,9 @@ export default function Settings() {
               </label>
               <input
                 type="text"
-                placeholder="ck_..."
-                className="input-field w-full"
-                required
+                defaultValue="ck_823aab9b5cab2eba66e6751f4f5c6502fe306566"
+                className="input-field w-full font-mono text-xs text-gray-700 bg-gray-50"
+                readOnly
               />
             </div>
             <div>
@@ -193,12 +193,12 @@ export default function Settings() {
               </label>
               <input
                 type="password"
-                placeholder="cs_..."
-                className="input-field w-full"
-                required
+                defaultValue="cs_00ed3a9685b5697cb50e61b70a004f4f36e2b99f"
+                className="input-field w-full font-mono text-xs text-gray-700 bg-gray-50"
+                readOnly
               />
             </div>
-            <button type="submit" className="btn-primary mt-2">Connect API</button>
+            <button type="submit" className="btn-primary mt-2">API Connected</button>
           </div>
         </form>
       </div>

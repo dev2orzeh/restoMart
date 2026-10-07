@@ -10,6 +10,7 @@ class CartItem {
   final String imagePath;
   final String name;
   final double price;
+  final double? originalPrice;
   int quantity;
 
   CartItem({
@@ -17,6 +18,7 @@ class CartItem {
     required this.imagePath,
     required this.name,
     required this.price,
+    this.originalPrice,
     this.quantity = 1,
   });
 
@@ -25,6 +27,7 @@ class CartItem {
     'imagePath': imagePath,
     'name': name,
     'price': price,
+    'originalPrice': originalPrice,
     'quantity': quantity,
   };
 
@@ -33,6 +36,7 @@ class CartItem {
     imagePath: json['imagePath'],
     name: json['name'],
     price: (json['price'] as num).toDouble(),
+    originalPrice: json['originalPrice'] != null ? (json['originalPrice'] as num).toDouble() : null,
     quantity: json['quantity'] as int,
   );
 }
@@ -133,7 +137,7 @@ class CartController extends GetxController {
     discountAmount.value = 0.0;
   }
 
-  void addToCart(String id, String imagePath, String name, double price, int quantity) {
+  void addToCart(String id, String imagePath, String name, double price, int quantity, {double? originalPrice}) {
     final existingIndex = cartItems.indexWhere((item) => item.name == name);
 
     if (existingIndex != -1) {
@@ -146,6 +150,7 @@ class CartController extends GetxController {
           imagePath: imagePath,
           name: name,
           price: price,
+          originalPrice: originalPrice,
           quantity: quantity,
         ),
       );
@@ -201,7 +206,7 @@ class CartController extends GetxController {
     cartItems.clear();
     await _loadCart();
     for (var item in existingGuestItems) {
-      addToCart(item.id, item.imagePath, item.name, item.price, item.quantity);
+      addToCart(item.id, item.imagePath, item.name, item.price, item.quantity, originalPrice: item.originalPrice);
     }
   }
 

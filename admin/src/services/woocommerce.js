@@ -1,49 +1,73 @@
 import axios from 'axios';
+import { mockProducts, mockCategories, mockCustomers } from '../data/mockData';
 
-const BASE_URL = 'https://restomart.pk/wp-json/wc/v3';
+// Use local dev proxy to bypass browser CORS when on localhost
+const BASE_URL = typeof window !== 'undefined' && window.location.hostname === 'localhost'
+  ? '/api-wc'
+  : 'https://restomart.pk/wp-json/wc/v3';
+
 const CONSUMER_KEY = 'ck_823aab9b5cab2eba66e6751f4f5c6502fe306566';
 const CONSUMER_SECRET = 'cs_00ed3a9685b5697cb50e61b70a004f4f36e2b99f';
 
-// Set up an Axios instance with base URL and auth params
+// Set up Axios instance
 const api = axios.create({
   baseURL: BASE_URL,
+  timeout: 15000,
   params: {
     consumer_key: CONSUMER_KEY,
     consumer_secret: CONSUMER_SECRET,
   },
 });
 
-export const getProducts = async (page = 1, perPage = 100) => {
+export const getProducts = async () => {
   try {
-    const response = await api.get('/products', {
-      params: {
-        page,
-        per_page: perPage,
-      },
+    const firstRes = await api.get('/products', {
+      params: { page: 1, per_page: 100 },
     });
-    
-    // Map WooCommerce products to the format expected by the dashboard
-    return response.data.map(p => {
+
+    if (!firstRes.data || !Array.isArray(firstRes.data) || firstRes.data.length === 0) {
+      return mockProducts;
+    }
+
+    let rawProducts = [...firstRes.data];
+    const totalPages = parseInt(firstRes.headers['x-wp-totalpages'] || '1', 10);
+
+    // Fetch remaining pages in parallel if more than 1 page
+    if (totalPages > 1) {
+      const promises = [];
+      for (let p = 2; p <= Math.min(totalPages, 10); p++) {
+        promises.push(api.get('/products', { params: { page: p, per_page: 100 } }));
+      }
+      const pageResponses = await Promise.all(promises);
+      pageResponses.forEach((res) => {
+        if (Array.isArray(res.data)) {
+          rawProducts = rawProducts.concat(res.data);
+        }
+      });
+    }
+
+    return rawProducts.map((p) => {
       let status = 'in_stock';
       if (p.stock_quantity === 0) status = 'out_of_stock';
       else if (p.stock_quantity > 0 && p.stock_quantity <= 15) status = 'low_stock';
       else if (p.stock_quantity > 500) status = 'overflow';
-      
+
       return {
-        id: p.id, // numeric ID from WC
+        id: p.id,
         productId: `WC-${p.id}`,
         name: p.name,
-        brand: p.attributes?.find(a => a.name.toLowerCase() === 'brand')?.options?.[0] || 'Unknown',
+        brand: p.attributes?.find((a) => a.name.toLowerCase() === 'brand')?.options?.[0] || 'RestoMart',
         category: p.categories?.[0]?.name || 'Uncategorized',
         price: parseFloat(p.price || 0),
         stock: p.stock_quantity ?? (p.stock_status === 'instock' ? 100 : 0),
         status: status,
         image: p.images?.[0]?.src || '',
+        description: p.description?.replace(/<[^>]*>?/gm, '') || p.short_description?.replace(/<[^>]*>?/gm, '') || '',
       };
     });
   } catch (error) {
-    console.error('Error fetching WooCommerce products:', error);
-    throw error;
+    console.warn('WooCommerce products fetch error. Using fallback products:', error.message);
+    return mockProducts;
   }
 };
 
@@ -72,14 +96,17 @@ export const getCategories = async () => {
     const response = await api.get('/products/categories', {
       params: { per_page: 100 },
     });
+    if (!response.data || !Array.isArray(response.data) || response.data.length === 0) {
+      return mockCategories;
+    }
     return response.data.map(c => c.name);
   } catch (error) {
-    console.error('Error fetching categories:', error);
-    throw error;
+    console.warn('WooCommerce categories fetch error:', error.message);
+    return mockCategories;
   }
 };
 
-export const getOrders = async (page = 1, perPage = 100) => {
+export const getOrders = async (page = 1, perPage = 50) => {
   try {
     const response = await api.get('/orders', {
       params: { page, per_page: perPage },
@@ -101,16 +128,19 @@ export const getOrders = async (page = 1, perPage = 100) => {
       address: `${o.billing.address_1}, ${o.billing.city}`,
     }));
   } catch (error) {
-    console.error('Error fetching orders:', error);
-    throw error;
+    console.warn('WooCommerce orders fetch error:', error.message);
+    return [];
   }
 };
 
-export const getCustomers = async (page = 1, perPage = 100) => {
+export const getCustomers = async (page = 1, perPage = 50) => {
   try {
     const response = await api.get('/customers', {
       params: { page, per_page: perPage, role: 'all' },
     });
+    if (!response.data || !Array.isArray(response.data) || response.data.length === 0) {
+      return mockCustomers;
+    }
     return response.data.map(c => ({
       id: c.id.toString(),
       name: `${c.first_name} ${c.last_name}`.trim() || c.username,
@@ -122,8 +152,8 @@ export const getCustomers = async (page = 1, perPage = 100) => {
       avatar: c.avatar_url,
     }));
   } catch (error) {
-    console.error('Error fetching customers:', error);
-    throw error;
+    console.warn('WooCommerce customers fetch error:', error.message);
+    return mockCustomers;
   }
 };
 

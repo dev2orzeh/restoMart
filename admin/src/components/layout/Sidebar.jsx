@@ -17,7 +17,6 @@ import {
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/orders', icon: FileText, label: 'Orders' },
-  { to: '/abandoned-carts', icon: ShoppingCart, label: 'Abandoned Carts' },
   { to: '/products', icon: Package, label: 'Products' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
