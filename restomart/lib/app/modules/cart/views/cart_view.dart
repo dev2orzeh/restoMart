@@ -3,11 +3,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:get/get.dart';
 import '../../../core/constants/app_text_styles.dart';
 import '../controllers/cart_controller.dart';
-import '../controllers/templates_controller.dart';
 import '../../checkout/views/checkout_view.dart';
 import '../../main/views/all_products_view.dart';
 import '../../main/views/product_details_view.dart';
-import '../../../widgets/confirmation_dialog.dart';
+import '../../../core/utils/error_handler.dart';
 
 class CartView extends StatelessWidget {
   CartView({super.key});
@@ -75,8 +74,12 @@ class CartView extends StatelessWidget {
                       alignment: Alignment.center,
                       child: TextButton.icon(
                         onPressed: () {
-                          // Navigate back to home if we came from there, or push AllProductsView
-                          Get.to(() => const AllProductsView());
+                          // Navigate back to previous screen (search/category view) to preserve active search state
+                          if (Navigator.of(context).canPop()) {
+                            Get.back();
+                          } else {
+                            Get.to(() => const AllProductsView());
+                          }
                         },
                         icon: const Icon(Icons.add_shopping_cart, color: Color(0xFF25258F), size: 18),
                         label: const Text('Add more items', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold, fontSize: 13)),
@@ -108,58 +111,71 @@ class CartView extends StatelessWidget {
   }
 
   Widget _buildCartItem(CartItem item) {
-    return GestureDetector(
-      onTap: () {
-        Get.to(() => ProductDetailsView(
-          id: item.id,
-          imagePath: item.imagePath,
-          name: item.name,
-          salePrice: item.price,
-          originalPrice: item.price,
-        ));
-      },
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade50,
-          borderRadius: BorderRadius.circular(16),
-        ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Row(
         children: [
-          // Image
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: item.imagePath.isEmpty
-                  ? Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36)
-                  : item.imagePath.startsWith('http')
-                      ? CachedNetworkImage(imageUrl: item.imagePath, fit: BoxFit.contain, memCacheWidth: 160, placeholder: (c,u) => const SizedBox(), errorWidget: (c,u,e) => Center(child: Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36)))
-                      : Image.asset(item.imagePath, fit: BoxFit.contain, errorBuilder: (context, error, stackTrace) => Center(child: Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36))),
+          // Image (Clickable for Product Details)
+          GestureDetector(
+            onTap: () {
+              Get.to(() => ProductDetailsView(
+                id: item.id,
+                imagePath: item.imagePath,
+                name: item.name,
+                salePrice: item.price,
+                originalPrice: item.price,
+              ));
+            },
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: item.imagePath.isEmpty
+                    ? Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36)
+                    : item.imagePath.startsWith('http')
+                        ? CachedNetworkImage(imageUrl: item.imagePath, fit: BoxFit.contain, memCacheWidth: 160, placeholder: (c,u) => const SizedBox(), errorWidget: (c,u,e) => Center(child: Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36)))
+                        : Image.asset(item.imagePath, fit: BoxFit.contain, errorBuilder: (context, error, stackTrace) => Center(child: Icon(Icons.fastfood, color: Colors.grey.shade400, size: 36))),
+              ),
             ),
           ),
           const SizedBox(width: 12),
-          // Details
+          // Details & Quantity Row
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  item.name,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                // Title (Clickable for Product Details)
+                GestureDetector(
+                  onTap: () {
+                    Get.to(() => ProductDetailsView(
+                      id: item.id,
+                      imagePath: item.imagePath,
+                      name: item.name,
+                      salePrice: item.price,
+                      originalPrice: item.price,
+                    ));
+                  },
+                  child: Text(
+                    item.name,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -170,9 +186,10 @@ class CartView extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Quantity Controls
+                    // Quantity Controls (Completely Isolated)
                     Container(
                       decoration: BoxDecoration(
+                        color: Colors.white,
                         border: Border.all(color: Colors.grey.shade300),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -199,6 +216,7 @@ class CartView extends StatelessWidget {
                         ],
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -247,24 +265,24 @@ class CartView extends StatelessWidget {
               ],
             ),
           ),
-          // Delete Button
+          // Delete Button (Completely Isolated with Left Margin)
           GestureDetector(
             onTap: () {
               cartController.removeItem(item);
             },
             child: Container(
-              margin: const EdgeInsets.only(left: 8),
+              margin: const EdgeInsets.only(left: 12),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: Colors.red.shade50,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.delete, color: Colors.red, size: 24),
+              child: const Icon(Icons.delete, color: Colors.red, size: 22),
             ),
           ),
         ],
       ),
-    ));
+    );
   }
 
   Widget _quantityButton(String label, VoidCallback onTap) {
@@ -321,9 +339,9 @@ class CartView extends StatelessWidget {
                     Get.back(); // close dialog
                     if (success) {
                       cartController.promoController.clear();
-                      Get.snackbar('Success', 'Coupon applied successfully!', backgroundColor: Colors.green, colorText: Colors.white);
+                      AppErrorHandler.showSuccess('Success', 'Coupon applied successfully!');
                     } else {
-                      Get.snackbar('Error', 'Invalid or expired coupon code.', backgroundColor: Colors.red, colorText: Colors.white);
+                      AppErrorHandler.showError('Invalid Coupon', 'Invalid or expired coupon code.');
                     }
                   }
                 },
@@ -427,12 +445,9 @@ class CartView extends StatelessWidget {
                 final CartController cartController = Get.find<CartController>();
 
                 if (cartController.cartItems.isEmpty) {
-                  Get.snackbar(
+                  AppErrorHandler.showWarning(
                     'Cart is Empty',
                     'Please add products before checkout.',
-                    snackPosition: SnackPosition.BOTTOM,
-                    backgroundColor: Colors.red.shade600,
-                    colorText: Colors.white,
                   );
                   return;
                 }

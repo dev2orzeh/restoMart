@@ -115,6 +115,29 @@ class WooCommerceApiService {
     }
   }
 
+  /// Update an order status in WooCommerce (e.g. 'cancelled', 'completed')
+  static Future<bool> updateOrderStatus(String orderId, String status) async {
+    try {
+      final cleanId = orderId.replaceAll('#', '').trim();
+      final url = _appendAuth('$_baseUrl/orders/$cleanId');
+      final response = await http.put(
+        Uri.parse(url),
+        headers: _headers,
+        body: json.encode({'status': status}),
+      ).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        log('WOOCOMMERCE API: Order #$cleanId status updated to $status');
+        return true;
+      } else {
+        log('WOOCOMMERCE API: Failed to update order status: ${response.body}');
+        return false;
+      }
+    } catch (e) {
+      log('WOOCOMMERCE API: Exception updating order status - $e');
+      return false;
+    }
+  }
+
   /// Validate a coupon code in WooCommerce
   static Future<Map<String, dynamic>?> validateCoupon(String code) async {
     try {

@@ -15,6 +15,7 @@ import '../../orders/controllers/orders_controller.dart';
 import '../../checkout/controllers/address_controller.dart';
 import '../../../core/services/woocommerce_api_service.dart';
 import '../../../core/services/ledger_service.dart';
+import '../../../core/utils/error_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:convert';
@@ -112,6 +113,17 @@ class AuthController extends GetxController {
       profileImagePath.value = (user.photoURL != null && user.photoURL!.startsWith('http')) ? user.photoURL! : '';
       businessName.value = '';
 
+      // Instant local cache retrieval so fields are never empty
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedP = prefs.getString('cached_user_phone_${user.uid}');
+        if (cachedP != null && cachedP.isNotEmpty) userPhone.value = cachedP;
+        final cachedN = prefs.getString('cached_user_name_${user.uid}');
+        if (cachedN != null && cachedN.isNotEmpty) userName.value = cachedN;
+        final cachedB = prefs.getString('cached_user_business_${user.uid}');
+        if (cachedB != null && cachedB.isNotEmpty) businessName.value = cachedB;
+      } catch (_) {}
+
       // Try to load user photo and restaurant name from Firestore first
       try {
         final doc = await FirebaseFirestore.instance
@@ -120,13 +132,24 @@ class AuthController extends GetxController {
             .get();
         if (doc.exists && doc.data() != null) {
           final data = doc.data()!;
+          final prefs = await SharedPreferences.getInstance();
+          if (data['phone'] != null && (data['phone'] as String).isNotEmpty) {
+            userPhone.value = data['phone'] as String;
+            await prefs.setString('cached_user_phone_${user.uid}', data['phone'] as String);
+          }
+          if (data['name'] != null && (data['name'] as String).isNotEmpty) {
+            userName.value = data['name'] as String;
+            await prefs.setString('cached_user_name_${user.uid}', data['name'] as String);
+          }
           if (data['profileImagePath'] != null && (data['profileImagePath'] as String).isNotEmpty) {
             profileImagePath.value = data['profileImagePath'] as String;
           }
           if (data['businessName'] != null && (data['businessName'] as String).isNotEmpty) {
             businessName.value = data['businessName'] as String;
+            await prefs.setString('cached_user_business_${user.uid}', data['businessName'] as String);
           } else if (data['restaurantName'] != null && (data['restaurantName'] as String).isNotEmpty) {
             businessName.value = data['restaurantName'] as String;
+            await prefs.setString('cached_user_business_${user.uid}', data['restaurantName'] as String);
           }
         }
       } catch (e) {
@@ -279,20 +302,30 @@ class AuthController extends GetxController {
       final email = loginEmailController.text.trim();
       final password = loginPasswordController.text;
 
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      await FirebaseAuth.instance
+          .signInWithEmailAndPassword(email: email, password: password)
+          .timeout(const Duration(seconds: 30));
 
-      // Sync FCM token to WooCommerce
-      final token = await FirebaseMessaging.instance.getToken();
-      final user = FirebaseAuth.instance.currentUser;
-      if (token != null && user != null) {
-        WooCommerceApiService.syncDeviceToken(user.uid, token);
+      // Non-critical post-login steps: never fail the login because of these
+      try {
+        final token = await FirebaseMessaging.instance
+            .getToken()
+            .timeout(const Duration(seconds: 10));
+        final user = FirebaseAuth.instance.currentUser;
+        if (token != null && user != null) {
+          WooCommerceApiService.syncDeviceToken(user.uid, token)
+              .catchError((_) {});
+        }
+      } catch (e) {
+        debugPrint('FCM token sync skipped: $e');
       }
 
-      if (Get.isRegistered<CartController>()) {
-        await Get.find<CartController>().reloadCartForUser();
+      try {
+        if (Get.isRegistered<CartController>()) {
+          await Get.find<CartController>().reloadCartForUser();
+        }
+      } catch (e) {
+        debugPrint('Cart reload skipped: $e');
       }
 
       // Show success bottom sheet
@@ -300,39 +333,19 @@ class AuthController extends GetxController {
         'Successful!',
         'You have successfully logged in.',
       );
-    } on FirebaseAuthException catch (e) {
-      String errorMessage = 'Invalid email or password. Please try again.';
-      if (e.code == 'user-not-found') {
-        errorMessage = 'No account found for this email. Please register.';
-      } else if (e.code == 'wrong-password') {
-        errorMessage = 'Incorrect password. Please try again.';
-      } else if (e.code == 'invalid-credential') {
-        errorMessage = 'Invalid email or password.';
-      } else if (e.code == 'invalid-email') {
-        errorMessage = 'The email address is badly formatted.';
-      } else if (e.code == 'network-request-failed') {
-        errorMessage = 'Network error. Please check your internet connection.';
-      } else if (e.message != null) {
-        errorMessage = e.message!;
-      }
-
+    } catch (e) {
+      final title = AppErrorHandler.isNetworkError(e)
+          ? 'Connection Problem'
+          : 'Login Failed';
       Get.snackbar(
-        'Login Failed',
-        errorMessage,
+        title,
+        AppErrorHandler.getErrorMessage(e),
         snackPosition: SnackPosition.TOP,
         backgroundColor: Colors.red.shade50,
         colorText: Colors.red.shade800,
         margin: const EdgeInsets.all(16),
         borderRadius: 12,
-      );
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        e.toString(), // Display the actual error so we know what went wrong
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red.shade50,
-        colorText: Colors.red.shade800,
-        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 4),
       );
     } finally {
       isLoading.value = false;
@@ -384,7 +397,8 @@ class AuthController extends GetxController {
       final password = registerPasswordController.text;
 
       UserCredential userCredential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(email: email, password: password);
+          .createUserWithEmailAndPassword(email: email, password: password)
+          .timeout(const Duration(seconds: 30));
 
       final uid = userCredential.user?.uid;
       final phone = registerPhoneController.text.trim();
@@ -392,67 +406,64 @@ class AuthController extends GetxController {
       final restaurantAddress = registerRestaurantAddressController.text.trim();
 
       if (uid != null) {
-        // Update the user's display name
-        await userCredential.user?.updateDisplayName(name);
+        try {
+          // Update the user's display name
+          await userCredential.user
+              ?.updateDisplayName(name)
+              .timeout(const Duration(seconds: 15));
 
-        // 1. Save user details to Firestore 'users' collection
-        await FirebaseFirestore.instance.collection('users').doc(uid).set({
-          'uid': uid,
-          'name': name,
-          'email': email,
-          'phone': phone,
-          'restaurantName': restaurantName,
-          'restaurantAddress': restaurantAddress,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+          // 1. Save user details to Firestore 'users' collection
+          await FirebaseFirestore.instance.collection('users').doc(uid).set({
+            'uid': uid,
+            'name': name,
+            'email': email,
+            'phone': phone,
+            'restaurantName': restaurantName,
+            'restaurantAddress': restaurantAddress,
+            'createdAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
 
-        // 2. Ensure customer ledger account is created in 'ledger_accounts'
-        await LedgerService.ensureAccountExists(
-          uid: uid,
-          name: name,
-          email: email,
-          phone: phone,
-        );
+          // 2. Ensure customer ledger account is created in 'ledger_accounts'
+          await LedgerService.ensureAccountExists(
+            uid: uid,
+            name: name,
+            email: email,
+            phone: phone,
+          ).timeout(const Duration(seconds: 20));
+        } catch (e) {
+          // Account exists in Auth; profile will sync once online (Firestore queues writes)
+          debugPrint('Profile setup deferred: $e');
+        }
       }
 
+      // Pre-fill login credentials so user can log in easily
+      loginEmailController.text = email;
+      loginPasswordController.text = password;
+
+      // Sign out from auto-login so user goes through Login flow as requested
+      await FirebaseAuth.instance.signOut();
       _loadUserProfile();
 
       _showSuccessBottomSheet(
-        'Successful!',
-        'Your account is created successfully\nand ready now.',
+        'Account Created Successfully!',
+        'Your account has been created. Please log in with your email and password.',
+        toHome: false,
+        buttonText: 'Go to Login',
       );
-    } on FirebaseAuthException catch (e) {
-      String errorMessage = 'An error occurred. Please try again.';
-      if (e.code == 'weak-password') {
-        errorMessage = 'The password provided is too weak.';
-      } else if (e.code == 'email-already-in-use') {
-        errorMessage = 'An account already exists for that email.';
-      } else if (e.code == 'invalid-email') {
-        errorMessage = 'The email address is badly formatted.';
-      } else if (e.code == 'network-request-failed') {
-        errorMessage = 'Network error. Please check your internet connection.';
-      } else if (e.message != null) {
-        errorMessage = e.message!;
-      }
-
+    } catch (e) {
+      final title = AppErrorHandler.isNetworkError(e)
+          ? 'Connection Problem'
+          : 'Registration Failed';
       Get.snackbar(
-        'Registration Failed',
-        errorMessage,
+        title,
+        AppErrorHandler.getErrorMessage(e),
         snackPosition: SnackPosition.TOP,
         backgroundColor: Colors.red.shade50,
         colorText: Colors.red.shade800,
         margin: const EdgeInsets.all(16),
         borderRadius: 12,
-      );
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        e.toString(), // Display the actual error so we know what went wrong
-        snackPosition: SnackPosition.TOP,
-        backgroundColor: Colors.red.shade50,
-        colorText: Colors.red.shade800,
-        margin: const EdgeInsets.all(16),
+        duration: const Duration(seconds: 4),
       );
     } finally {
       isLoading.value = false;
@@ -601,8 +612,19 @@ class AuthController extends GetxController {
         duration: const Duration(seconds: 4),
       );
       Get.offAllNamed(AppRoutes.login);
+    } on FirebaseAuthException catch (e) {
+      final message = AppErrorHandler.getErrorMessage(e);
+      Get.snackbar(
+        'Reset Failed',
+        message,
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: Colors.red.shade50,
+        colorText: Colors.red.shade800,
+        margin: const EdgeInsets.all(16),
+        borderRadius: 12,
+      );
     } catch (e) {
-      Get.snackbar('Error', e.toString(), backgroundColor: Colors.red.shade50);
+      AppErrorHandler.showError('Error', e);
     } finally {
       isLoading.value = false;
     }
@@ -678,7 +700,7 @@ class AuthController extends GetxController {
   // ── Helpers ───────────────────────────────────────────────────────
 
   /// Mask email for OTP screen display: sa****le@gmail.com
-  String _maskEmail(String email) {
+  String maskEmail(String email) {
     final parts = email.split('@');
     if (parts.length != 2) return email;
 
@@ -694,6 +716,7 @@ class AuthController extends GetxController {
     String title,
     String message, {
     bool toHome = true,
+    String buttonText = 'Browse Home',
   }) {
     Get.bottomSheet(
       Container(
@@ -724,8 +747,9 @@ class AuthController extends GetxController {
             const SizedBox(height: 24),
             Text(
               title,
+              textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 24,
+                fontSize: 22,
                 fontWeight: FontWeight.bold,
                 color: Colors.black,
               ),
@@ -749,6 +773,8 @@ class AuthController extends GetxController {
                   Get.back(); // close bottom sheet
                   if (toHome) {
                     Get.offAllNamed(AppRoutes.home);
+                  } else {
+                    Get.offAllNamed(AppRoutes.login);
                   }
                 },
                 style: ElevatedButton.styleFrom(
@@ -759,9 +785,9 @@ class AuthController extends GetxController {
                   ),
                   elevation: 0,
                 ),
-                child: const Text(
-                  'Browse Home',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                child: Text(
+                  buttonText,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),

@@ -1,8 +1,8 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get/get.dart';
-import 'package:lottie/lottie.dart';
 import '../../auth/controllers/auth_controller.dart';
 
 import '../../../core/constants/app_text_styles.dart';
@@ -15,9 +15,11 @@ import '../../../core/services/email_service.dart';
 import '../../../core/services/pdf_invoice_service.dart';
 import '../../../core/services/ledger_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../orders/views/orders_view.dart';
 import '../../../core/services/woocommerce_api_service.dart';
 import '../../../widgets/custom_text_field.dart';
+import '../../../core/utils/error_handler.dart';
 class CheckoutView extends StatefulWidget {
   const CheckoutView({super.key});
 
@@ -60,6 +62,73 @@ class _CheckoutViewState extends State<CheckoutView> {
     _nameController = TextEditingController(text: name);
     _phoneController = TextEditingController(text: phone);
     _manualAddressInputController = TextEditingController();
+
+    // Auto-load and select primary default address when opening checkout
+    addressController.loadAddressesForCurrentUser().then((_) {
+      if (mounted && addressController.savedAddresses.isNotEmpty) {
+        addressController.selectedAddressIndex.value = 0;
+      }
+    });
+
+    // Auto-fill user profile (Phone, Name, Business) from local cache and Firestore
+    _loadAutoFillProfile();
+  }
+
+  Future<void> _loadAutoFillProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedPhone = prefs.getString('cached_user_phone_${user.uid}');
+      final cachedName = prefs.getString('cached_user_name_${user.uid}');
+      final cachedBiz = prefs.getString('cached_user_business_${user.uid}');
+
+      if (mounted) {
+        if (_phoneController.text.isEmpty && cachedPhone != null && cachedPhone.isNotEmpty) {
+          _phoneController.text = cachedPhone;
+        }
+        if (_nameController.text.isEmpty && cachedName != null && cachedName.isNotEmpty) {
+          _nameController.text = cachedName;
+        }
+        if (_storeNameController.text.isEmpty && cachedBiz != null && cachedBiz.isNotEmpty) {
+          _storeNameController.text = cachedBiz;
+        }
+      }
+
+      // If phone is still empty, fetch from Firestore users doc directly
+      if (_phoneController.text.isEmpty || _nameController.text.isEmpty) {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          final fsPhone = (data['phone'] as String?) ?? (data['phoneNumber'] as String?) ?? '';
+          final fsName = (data['name'] as String?) ?? (data['displayName'] as String?) ?? '';
+          final fsBiz = (data['restaurantName'] as String?) ?? (data['businessName'] as String?) ?? '';
+
+          if (mounted) {
+            setState(() {
+              if (_phoneController.text.isEmpty && fsPhone.isNotEmpty) {
+                _phoneController.text = fsPhone;
+                prefs.setString('cached_user_phone_${user.uid}', fsPhone);
+                if (Get.isRegistered<AuthController>()) {
+                  Get.find<AuthController>().userPhone.value = fsPhone;
+                }
+              }
+              if (_nameController.text.isEmpty && fsName.isNotEmpty) {
+                _nameController.text = fsName;
+                prefs.setString('cached_user_name_${user.uid}', fsName);
+              }
+              if (_storeNameController.text.isEmpty && fsBiz.isNotEmpty) {
+                _storeNameController.text = fsBiz;
+                prefs.setString('cached_user_business_${user.uid}', fsBiz);
+              }
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Checkout autofill profile error: $e');
+    }
   }
 
   @override
@@ -76,6 +145,59 @@ class _CheckoutViewState extends State<CheckoutView> {
     final random = Random();
     final number = random.nextInt(90000) + 10000;
     return 'RM-$number';
+  }
+
+  void _showQuickAddAddressModal(BuildContext context) {
+    final TextEditingController labelCtrl = TextEditingController(text: 'Work');
+    final TextEditingController addrCtrl = TextEditingController();
+
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Add Delivery Address', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold, fontSize: 18)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: labelCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Label (e.g., Home, Shop, Branch 2)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: addrCtrl,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Address Details',
+                hintText: 'Building, Shop #, Street, City',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final text = addrCtrl.text.trim();
+              if (text.isNotEmpty) {
+                final label = labelCtrl.text.trim().isEmpty ? 'Address' : labelCtrl.text.trim();
+                addressController.addAddress(label, text);
+                Get.back();
+                AppErrorHandler.showSuccess('Address Saved', 'Selected for delivery');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25258F), foregroundColor: Colors.white),
+            child: const Text('Save & Select'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -163,17 +285,29 @@ class _CheckoutViewState extends State<CheckoutView> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('Delivery Address', style: AppTextStyles.headingMedium.copyWith(fontSize: 18, fontWeight: FontWeight.bold)),
-                        TextButton(
-                          onPressed: () async {
-                            final result = await Get.to(() => const LocationPickerView());
-                            if (result != null) {
-                              addressController.addAddress(
-                                (result['label'] as String?) ?? 'New Location',
-                                result['address'] as String,
-                              );
-                            }
-                          },
-                          child: const Text('+ Add New', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold, fontSize: 13)),
+                        Row(
+                          children: [
+                            TextButton.icon(
+                              onPressed: () => _showQuickAddAddressModal(context),
+                              icon: const Icon(Icons.edit_note, size: 16, color: Color(0xFF25258F)),
+                              label: const Text('Type Address', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold, fontSize: 12)),
+                            ),
+                            TextButton.icon(
+                              onPressed: () async {
+                                final result = await Get.to(() => const LocationPickerView());
+                                if (result != null) {
+                                  addressController.addAddress(
+                                    (result['label'] as String?) ?? 'New Location',
+                                    result['address'] as String,
+                                    lat: (result['lat'] as num?)?.toDouble(),
+                                    lng: (result['lng'] as num?)?.toDouble(),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.add_location_alt, size: 16, color: Color(0xFF25258F)),
+                              label: const Text('Map', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold, fontSize: 12)),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -214,14 +348,38 @@ class _CheckoutViewState extends State<CheckoutView> {
                                       addressController.addAddress('Home', text);
                                       _manualAddressInputController.clear();
                                     } else {
-                                      Get.snackbar('Address Required', 'Please type your address in the box.');
+                                      AppErrorHandler.showWarning('Address Required', 'Please type your address in the box.');
                                     }
                                   },
-                                  icon: const Icon(Icons.add_location_alt, size: 18),
+                                  icon: const Icon(Icons.check_circle_outline, size: 18),
                                   label: const Text('Save & Select Address'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF25258F),
                                     foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final result = await Get.to(() => const LocationPickerView());
+                                    if (result != null && result['address'] != null) {
+                                      addressController.addAddress(
+                                        (result['label'] as String?) ?? 'New Location',
+                                        result['address'] as String,
+                                        lat: (result['lat'] as num?)?.toDouble(),
+                                        lng: (result['lng'] as num?)?.toDouble(),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(Icons.map_rounded, size: 18, color: Color(0xFF25258F)),
+                                  label: const Text('Or Pick on Map / GPS', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold)),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    side: const BorderSide(color: Color(0xFF25258F), width: 1.5),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                   ),
                                 ),
@@ -274,7 +432,8 @@ class _CheckoutViewState extends State<CheckoutView> {
                                       ],
                                     ),
                                   ),
-                                  if (isSelected) const Icon(Icons.check_circle, color: Color(0xFF25258F), size: 22),
+                                  if (isSelected)
+                                    const Icon(Icons.check_circle, color: Color(0xFF25258F), size: 22),
                                 ],
                               ),
                             ),
@@ -355,9 +514,9 @@ class _CheckoutViewState extends State<CheckoutView> {
                     // ── STEP 2: Payment Method ───────────────────
                     Text('Payment Method', style: AppTextStyles.headingMedium.copyWith(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
-                    _buildPaymentOption(Icons.money, 'Cash on delivery', Colors.deepOrange),
+                    _buildPaymentOption(Icons.payments_rounded, 'Cash on delivery', const Color(0xFF2E7D32)),
                     const SizedBox(height: 12),
-                    _buildPaymentOption(Icons.account_balance, 'Bank Transfer', Colors.deepOrange),
+                    _buildPaymentOption(Icons.account_balance_rounded, 'Bank Transfer', const Color(0xFF1565C0)),
                     if (selectedPayment == 'Bank Transfer') ...[
                       const SizedBox(height: 8),
                       Container(
@@ -372,11 +531,11 @@ class _CheckoutViewState extends State<CheckoutView> {
                           children: [
                             const Text('Please transfer the total amount to:', style: TextStyle(fontSize: 12, color: Colors.black54)),
                             const SizedBox(height: 12),
-                            _buildBankRow('Bank:', 'MCB Bank Limited'),
+                            _buildBankRow('Bank:', 'Faysal Bank'),
                             const SizedBox(height: 8),
-                            _buildBankRow('Account #:', '1538016401000300'),
+                            _buildBankRow('Account #:', '3622499000002192', showCopy: true),
                             const SizedBox(height: 8),
-                            _buildBankRow('Title:', 'RestoMart'),
+                            _buildBankRow('Title:', 'Restomart'),
                             const SizedBox(height: 12),
                             const Text(
                               'Please send screenshot or email at order@restomart.pk or +92 321 1655556 after confirmation your order will be dispatched.', 
@@ -386,20 +545,6 @@ class _CheckoutViewState extends State<CheckoutView> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 12),
-                    _buildPaymentOption(
-                      Icons.credit_card, 
-                      'Credit Card / Online Payment', 
-                      Colors.blue,
-                      onTapOverride: () {
-                        Get.snackbar(
-                          'Coming Soon', 
-                          "Sorry, this feature is coming very soon. It's not available yet.",
-                          snackPosition: SnackPosition.BOTTOM,
-                          backgroundColor: Colors.white,
-                        );
-                      }
-                    ),
                     const SizedBox(height: 32),
 
                     // ── Order Info ────────────────────────────────
@@ -423,230 +568,312 @@ class _CheckoutViewState extends State<CheckoutView> {
             ),
       bottomSheet: currentStep < 3
           ? Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -4))],
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
               ),
               child: SafeArea(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Total', style: AppTextStyles.label.copyWith(color: Colors.grey.shade600)),
-                        Text('Rs. ${total.toInt()}', style: AppTextStyles.headingMedium.copyWith(fontWeight: FontWeight.bold, fontSize: 24)),
-                      ],
-                    ),
-                    ElevatedButton(
-                      onPressed: isPlacingOrder ? null : () async {
-                        if (currentStep == 1) {
-                          if (addressController.savedAddresses.isEmpty) {
-                            final manualText = _manualAddressInputController.text.trim();
-                            if (manualText.isNotEmpty) {
-                              addressController.addAddress('Home', manualText);
-                              _manualAddressInputController.clear();
-                            } else {
-                              Get.snackbar(
-                                'Address Required',
-                                'Please enter or type your delivery address to continue.',
-                                snackPosition: SnackPosition.BOTTOM,
-                                backgroundColor: Colors.red.shade50,
-                                colorText: Colors.red.shade900,
-                              );
-                              return;
-                            }
-                          }
-                          setState(() => currentStep = 2);
-                        } else if (currentStep == 2) {
-                          setState(() {
-                            isPlacingOrder = true;
-                          });
-
-                          try {
-                            // Generate order number (local reference)
-                            _orderNumber = _generateOrderNumber();
-                            final cartController = Get.find<CartController>();
-                            final ordersController = Get.isRegistered<OrdersController>()
-                                ? Get.find<OrdersController>()
-                                : Get.put(OrdersController(), permanent: true);
-
-                            // --- WOOCOMMERCE LIVE CHECKOUT ---
-                            // 1. Build line items
-                            final List<Map<String, dynamic>> lineItems = cartController.cartItems.map((item) {
-                              return {
-                                "product_id": int.tryParse(item.id) ?? 0, 
-                                "name": item.name,
-                                "quantity": item.quantity,
-                              };
-                            }).toList();
-                            
-                            // 2. Build Customer Details (Using hardcoded user data or address picker)
-                            final Map<String, dynamic> activeAddr = addressController.savedAddresses.isNotEmpty
-                                ? addressController.savedAddresses[addressController.selectedAddressIndex.value]
-                                : {'address': 'Default Address, Pakistan'};
-                            final billing = {
-                              "first_name": _nameController.text.isNotEmpty ? _nameController.text : "Guest",
-                              "last_name": "Customer",
-                              "address_1": activeAddr['address'],
-                              "city": "Lahore",
-                              "state": "PB",
-                              "postcode": "54000",
-                              "country": "PK",
-                              "email": FirebaseAuth.instance.currentUser?.email ?? "customer@restomart.pk",
-                              "phone": _phoneController.text.isNotEmpty ? _phoneController.text : "00000000000"
-                            };
-
-                            final payload = {
-                              "payment_method": selectedPayment == 'Cash on delivery' ? "cod" : "bacs",
-                              "payment_method_title": selectedPayment,
-                              "set_paid": false,
-                              "billing": billing,
-                              "shipping": billing,
-                              "line_items": lineItems,
-                              if (cartController.appliedCouponCode.value != null && cartController.appliedCouponCode.value!.isNotEmpty)
-                                "coupon_lines": [
-                                  {
-                                    "code": cartController.appliedCouponCode.value
-                                  }
-                                ],
-                              "shipping_lines": [
-                                {
-                                  "method_id": "flat_rate",
-                                  "method_title": "Delivery Fee",
-                                  "total": shipping.toString()
-                                }
-                              ],
-                              "customer_note": _instructionsController.text
-                            };
-
-                            // 3. Post to WordPress (attempt WooCommerce API)
-                            String? wooOrderId;
-                            try {
-                              wooOrderId = await WooCommerceApiService.createOrder(payload);
-                            } catch (e) {
-                              print("WooCommerce API Exception: $e");
-                            }
-
-                            if (wooOrderId != null && wooOrderId.isNotEmpty) {
-                              _orderNumber = wooOrderId;
-                            } else {
-                              _orderNumber = _orderNumber ?? _generateOrderNumber();
-                            }
-
-                            final newOrder = OrderModel(
-                              id: _orderNumber!,
-                              date: DateTime.now(),
-                              total: total,
-                              status: 'pending',
-                              paymentMethod: selectedPayment,
-                              specialInstructions: _instructionsController.text,
-                              items: List.from(cartController.cartItems), // Clone list
-                            );
-
-                            // Save to local orders history & Firestore
-                            await ordersController.addOrder(
-                              newOrder,
-                              customerName: _nameController.text,
-                              phone: _phoneController.text,
-                              address: activeAddr['address'],
-                            );
-
-                            if (cartController.appliedCouponCode.value != null) {
-                              final usedCode = cartController.appliedCouponCode.value!.toUpperCase();
-                              if (usedCode == 'WELCOME10' || usedCode == 'SAVE500') {
-                                final prefs = await SharedPreferences.getInstance();
-                                final user = FirebaseAuth.instance.currentUser;
-                                final uid = user?.uid ?? 'guest';
-                                final key = 'used_promo_${usedCode}_$uid';
-                                await prefs.setBool(key, true);
-                              }
-                            }
-
-                            cartController.clearCart();
-                            
-                            // Ledger: Ensure account exists
-                            try {
-                              final user = FirebaseAuth.instance.currentUser;
-                              final uid = user?.uid ?? 'guest';
-                              final email = user?.email ?? 'guest@restomart.pk';
-                              
-                              await LedgerService.ensureAccountExists(
-                                uid: uid,
-                                name: _nameController.text.isNotEmpty ? _nameController.text : 'Guest Customer',
-                                email: email,
-                                phone: _phoneController.text.isNotEmpty ? _phoneController.text : '+920000000000',
-                              );
-                            } catch (e) {
-                              print("Ledger error: $e");
-                            }
-                            
-                            // Trigger local notification safely
-                            try {
-                              PushNotificationService.showOrderSuccessNotification(_orderNumber!);
-                            } catch (e) {
-                              print("Notification failed: $e");
-                            }
-
-                            // Send Invoice Email via SMTP to the logged-in user
-                            try {
-                              final user = FirebaseAuth.instance.currentUser;
-                              if (user != null) {
-                                WooCommerceApiService.markCartConverted(user.uid);
-                                final currentUserEmail = user.email;
-                                if (currentUserEmail != null && currentUserEmail.isNotEmpty) {
-                                  final pdfBytes = await PdfInvoiceService.generateInvoiceBytes(newOrder);
-                                  await EmailService.sendInvoiceEmail(
-                                    recipientEmail: currentUserEmail,
-                                    order: newOrder,
-                                    pdfBytes: pdfBytes,
-                                  );
-                                }
-                              }
-                            } catch (e) {
-                              print("Email sequence failed: $e");
-                            }
-
-                            setState(() {
-                              isPlacingOrder = false;
-                              currentStep = 3;
-                            });
-                          } catch (e) {
-                            print("Checkout exception: $e");
-                            setState(() {
-                              isPlacingOrder = false;
-                            });
-                            Get.snackbar(
-                              'Checkout Error', 
-                              'An unexpected error occurred: $e',
-                              backgroundColor: Colors.red.shade600,
-                              colorText: Colors.white,
-                              snackPosition: SnackPosition.BOTTOM,
-                            );
-                          }
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(0, 48), // Overrides global theme infinite width
-                        backgroundColor: const Color(0xFF25258F),
-                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: isPlacingOrder 
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(
-                            currentStep == 1 ? 'Continue to Payment' : 'Place Order',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                child: currentStep == 1
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Total', style: AppTextStyles.label.copyWith(color: Colors.grey.shade600)),
+                              Text('Rs. ${total.toInt()}', style: AppTextStyles.headingMedium.copyWith(fontWeight: FontWeight.bold, fontSize: 24)),
+                            ],
                           ),
-                    ),
-                  ],
-                ),
+                          ElevatedButton(
+                            onPressed: () {
+                              final phone = _phoneController.text.trim();
+                              if (phone.isEmpty || phone.replaceAll(RegExp(r'[^0-9]'), '').length < 10) {
+                                setState(() {
+                                  _isEditingPersonalInfo = true;
+                                });
+                                AppErrorHandler.showWarning(
+                                  'Phone Number Mandatory',
+                                  'Please enter a valid mobile number so our delivery team can reach you.',
+                                );
+                                return;
+                              }
+
+                              if (addressController.savedAddresses.isEmpty) {
+                                final manualText = _manualAddressInputController.text.trim();
+                                if (manualText.isNotEmpty) {
+                                  addressController.addAddress('Home', manualText);
+                                  _manualAddressInputController.clear();
+                                } else {
+                                  AppErrorHandler.showWarning(
+                                    'Address Required',
+                                    'Please enter or type your delivery address to continue.',
+                                  );
+                                  return;
+                                }
+                              }
+                              setState(() => currentStep = 2);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(0, 48),
+                              backgroundColor: const Color(0xFF25258F),
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text(
+                              'Continue to Payment',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text('Total Payable', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                  Text(
+                                    'Rs. ${total.toInt()}',
+                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Color(0xFF25258F)),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF25258F).withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.payments_outlined, size: 14, color: Color(0xFF25258F)),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      selectedPayment,
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF25258F)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          // ── LONG SWIPE TO PLACE ORDER BUTTON ──
+                          SwipeToPlaceOrderButton(
+                            isLoading: isPlacingOrder,
+                            text: 'Swipe to Place Order',
+                            onSwipeComplete: () => _handlePlaceOrder(total, shipping, addressController),
+                          ),
+                        ],
+                      ),
               ),
             )
           : null,
     );
+  }
+
+  Future<void> _handlePlaceOrder(double total, double shipping, AddressController addressController) async {
+    final phone = _phoneController.text.trim();
+    if (phone.isEmpty || phone.replaceAll(RegExp(r'[^0-9]'), '').length < 10) {
+      setState(() {
+        currentStep = 1;
+        _isEditingPersonalInfo = true;
+      });
+      AppErrorHandler.showWarning(
+        'Phone Number Mandatory',
+        'Please provide a valid mobile number for delivery verification.',
+      );
+      return;
+    }
+
+    setState(() {
+      isPlacingOrder = true;
+    });
+
+    try {
+      // Generate order number (local reference)
+      _orderNumber = _generateOrderNumber();
+      final cartController = Get.find<CartController>();
+      final ordersController = Get.isRegistered<OrdersController>()
+          ? Get.find<OrdersController>()
+          : Get.put(OrdersController(), permanent: true);
+
+      // --- WOOCOMMERCE LIVE CHECKOUT ---
+      // 1. Build line items
+      final List<Map<String, dynamic>> lineItems = cartController.cartItems.map((item) {
+        return {
+          "product_id": int.tryParse(item.id) ?? 0, 
+          "name": item.name,
+          "quantity": item.quantity,
+        };
+      }).toList();
+      
+      // 2. Build Customer Details (Using hardcoded user data or address picker)
+      final Map<String, dynamic> activeAddr = addressController.savedAddresses.isNotEmpty
+          ? addressController.savedAddresses[addressController.selectedAddressIndex.value]
+          : {'address': 'Default Address, Pakistan'};
+      final billing = {
+        "first_name": _nameController.text.isNotEmpty ? _nameController.text : "Guest",
+        "last_name": "Customer",
+        "address_1": activeAddr['address'],
+        "city": "Lahore",
+        "state": "PB",
+        "postcode": "54000",
+        "country": "PK",
+        "email": FirebaseAuth.instance.currentUser?.email ?? "customer@restomart.pk",
+        "phone": _phoneController.text.isNotEmpty ? _phoneController.text : "00000000000"
+      };
+
+      final payload = {
+        "payment_method": selectedPayment == 'Cash on delivery' ? "cod" : "bacs",
+        "payment_method_title": selectedPayment,
+        "set_paid": false,
+        "billing": billing,
+        "shipping": billing,
+        "line_items": lineItems,
+        if (cartController.appliedCouponCode.value != null && cartController.appliedCouponCode.value!.isNotEmpty)
+          "coupon_lines": [
+            {
+              "code": cartController.appliedCouponCode.value
+            }
+          ],
+        "shipping_lines": [
+          {
+            "method_id": "flat_rate",
+            "method_title": "Delivery Fee",
+            "total": shipping.toString()
+          }
+        ],
+        "customer_note": [
+          if (_instructionsController.text.isNotEmpty) _instructionsController.text.trim(),
+          if (activeAddr['lat'] != null && activeAddr['lng'] != null)
+            "📍 Delivery Map Pin: https://www.google.com/maps/search/?api=1&query=${activeAddr['lat']},${activeAddr['lng']}"
+        ].join('\n\n')
+      };
+
+      // 3. Post to WordPress (attempt WooCommerce API)
+      String? wooOrderId;
+      try {
+        wooOrderId = await WooCommerceApiService.createOrder(payload);
+      } catch (e) {
+        print("WooCommerce API Exception: $e");
+      }
+
+      if (wooOrderId != null && wooOrderId.isNotEmpty) {
+        _orderNumber = wooOrderId;
+      } else {
+        _orderNumber = _orderNumber ?? _generateOrderNumber();
+      }
+
+      final newOrder = OrderModel(
+        id: _orderNumber!,
+        date: DateTime.now(),
+        total: total,
+        status: 'pending',
+        paymentMethod: selectedPayment,
+        specialInstructions: _instructionsController.text,
+        items: List.from(cartController.cartItems), // Clone list
+      );
+
+      // Save to local orders history & Firestore
+      await ordersController.addOrder(
+        newOrder,
+        customerName: _nameController.text,
+        phone: _phoneController.text,
+        address: activeAddr['address'],
+        lat: double.tryParse(activeAddr['lat']?.toString() ?? ''),
+        lng: double.tryParse(activeAddr['lng']?.toString() ?? ''),
+      );
+
+      if (cartController.appliedCouponCode.value != null) {
+        final usedCode = cartController.appliedCouponCode.value!.toUpperCase();
+        if (usedCode == 'WELCOME10' || usedCode == 'SAVE500') {
+          final prefs = await SharedPreferences.getInstance();
+          final user = FirebaseAuth.instance.currentUser;
+          final uid = user?.uid ?? 'guest';
+          final key = 'used_promo_${usedCode}_$uid';
+          await prefs.setBool(key, true);
+        }
+      }
+
+      cartController.clearCart();
+      
+      // Ledger: Ensure account exists & record order debit
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        final uid = user?.uid ?? 'guest';
+        final email = user?.email ?? 'guest@restomart.pk';
+        
+        if (uid != 'guest') {
+          await LedgerService.ensureAccountExists(
+            uid: uid,
+            name: _nameController.text.isNotEmpty ? _nameController.text : 'Customer',
+            email: email,
+            phone: _phoneController.text.isNotEmpty ? _phoneController.text : '+920000000000',
+          );
+
+          await LedgerService.recordOrderDebit(
+            uid: uid,
+            orderId: _orderNumber!,
+            amount: total,
+            paymentMethod: selectedPayment,
+          );
+        }
+      } catch (e) {
+        print("Ledger error: $e");
+      }
+      
+      // Trigger local notification safely
+      try {
+        PushNotificationService.showOrderSuccessNotification(_orderNumber!);
+      } catch (e) {
+        print("Notification failed: $e");
+      }
+
+      // Send Invoice Email via SMTP to the logged-in user
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          WooCommerceApiService.markCartConverted(user.uid);
+          final currentUserEmail = user.email;
+          if (currentUserEmail != null && currentUserEmail.isNotEmpty) {
+            final pdfBytes = await PdfInvoiceService.generateInvoiceBytes(newOrder);
+            await EmailService.sendInvoiceEmail(
+              recipientEmail: currentUserEmail,
+              order: newOrder,
+              pdfBytes: pdfBytes,
+            );
+          }
+        }
+      } catch (e) {
+        print("Email sequence failed: $e");
+      }
+
+      setState(() {
+        isPlacingOrder = false;
+        currentStep = 3;
+      });
+    } catch (e) {
+      print("Checkout exception: $e");
+      setState(() {
+        isPlacingOrder = false;
+      });
+      AppErrorHandler.showError('Checkout Error', e);
+    }
   }
 
   Widget _buildConfirmationScreen() {
@@ -816,11 +1043,52 @@ class _CheckoutViewState extends State<CheckoutView> {
     );
   }
 
-  Widget _buildBankRow(String label, String value) {
+  Widget _buildBankRow(String label, String value, {bool showCopy = false}) {
     return Row(
       children: [
         SizedBox(width: 80, child: Text(label, style: const TextStyle(fontSize: 13, color: Colors.black54))),
-        Expanded(child: Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87))),
+        Expanded(
+          child: Row(
+            children: [
+              Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
+              if (showCopy) ...[
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: value));
+                    Get.snackbar(
+                      'Copied to Clipboard',
+                      'Account number copied: $value',
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: Colors.white,
+                      colorText: Colors.black87,
+                      icon: const Icon(Icons.check_circle, color: Colors.green),
+                      duration: const Duration(seconds: 2),
+                    );
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF25258F).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.copy, size: 12, color: Color(0xFF25258F)),
+                        SizedBox(width: 3),
+                        Text(
+                          'Copy',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF25258F)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -848,27 +1116,239 @@ class _CheckoutViewState extends State<CheckoutView> {
       ),
     );
   }
+}
 
-  Widget _buildPaymentOptionSmall(IconData icon, String title) {
-    bool isSelected = selectedPayment == title;
-    return InkWell(
-      onTap: () => setState(() => selectedPayment = title),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+// ============================================================================
+// SWIPE TO PLACE ORDER BUTTON
+// ============================================================================
+class SwipeToPlaceOrderButton extends StatefulWidget {
+  final bool isLoading;
+  final VoidCallback onSwipeComplete;
+  final String text;
+
+  const SwipeToPlaceOrderButton({
+    super.key,
+    required this.isLoading,
+    required this.onSwipeComplete,
+    this.text = 'Swipe to Place Order',
+  });
+
+  @override
+  State<SwipeToPlaceOrderButton> createState() => _SwipeToPlaceOrderButtonState();
+}
+
+class _SwipeToPlaceOrderButtonState extends State<SwipeToPlaceOrderButton>
+    with SingleTickerProviderStateMixin {
+  double _dragPosition = 0.0;
+  bool _isCompleted = false;
+  late AnimationController _resetController;
+  late Animation<double> _resetAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _resetController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _resetController.addListener(() {
+      setState(() {
+        _dragPosition = _resetAnimation.value;
+      });
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant SwipeToPlaceOrderButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isLoading && !widget.isLoading) {
+      setState(() {
+        _dragPosition = 0.0;
+        _isCompleted = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _resetController.dispose();
+    super.dispose();
+  }
+
+  void _onDragUpdate(DragUpdateDetails details, double maxDrag) {
+    if (widget.isLoading || _isCompleted) return;
+    setState(() {
+      _dragPosition = (_dragPosition + details.delta.dx).clamp(0.0, maxDrag);
+    });
+  }
+
+  void _onDragEnd(DragEndDetails details, double maxDrag) {
+    if (widget.isLoading || _isCompleted) return;
+    if (_dragPosition >= maxDrag * 0.72) {
+      setState(() {
+        _dragPosition = maxDrag;
+        _isCompleted = true;
+      });
+      HapticFeedback.heavyImpact();
+      widget.onSwipeComplete();
+    } else {
+      _resetAnimation = Tween<double>(begin: _dragPosition, end: 0.0).animate(
+        CurvedAnimation(parent: _resetController, curve: Curves.easeOutCubic),
+      );
+      _resetController.forward(from: 0.0);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const double buttonHeight = 56.0;
+    const double thumbSize = 46.0;
+    const double padding = 5.0;
+
+    if (widget.isLoading) {
+      return Container(
+        height: buttonHeight,
+        width: double.infinity,
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFF0F0FF) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isSelected ? const Color(0xFF25258F) : Colors.grey.shade300, width: isSelected ? 2 : 1),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: isSelected ? const Color(0xFF25258F) : Colors.black54, size: 20),
-            const SizedBox(width: 8),
-            Text(title, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+          color: const Color(0xFF25258F),
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF25258F).withValues(alpha: 0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
           ],
         ),
-      ),
+        child: const Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+              ),
+              SizedBox(width: 14),
+              Text(
+                'Placing Your Order...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double maxWidth = constraints.maxWidth;
+        final double maxDrag = (maxWidth - thumbSize - (padding * 2)).clamp(10.0, double.infinity);
+        final double progress = (maxDrag > 0) ? (_dragPosition / maxDrag).clamp(0.0, 1.0) : 0.0;
+
+        return GestureDetector(
+          onHorizontalDragUpdate: (details) => _onDragUpdate(details, maxDrag),
+          onHorizontalDragEnd: (details) => _onDragEnd(details, maxDrag),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
+            height: buttonHeight,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: const Color(0xFF25258F),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF25258F).withValues(alpha: 0.28),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Stack(
+              alignment: Alignment.centerLeft,
+              children: [
+                // ── Swipe Progress Fill Track (Theme Orange) ──
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: _dragPosition + thumbSize + padding,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFF6D00), Color(0xFFFFA000)],
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                  ),
+                ),
+
+                // ── Centered Swipe Text ──
+                Center(
+                  child: Opacity(
+                    opacity: (1.0 - (progress * 1.5)).clamp(0.0, 1.0),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Swipe to Place Order',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        SizedBox(width: 6),
+                        Icon(
+                          Icons.keyboard_double_arrow_right_rounded,
+                          color: Color(0xFFFFC400),
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // ── Draggable Thumb ──
+                Positioned(
+                  left: padding + _dragPosition,
+                  child: Container(
+                    width: thumbSize,
+                    height: thumbSize,
+                    decoration: BoxDecoration(
+                      color: progress > 0.72 ? const Color(0xFFFF6D00) : const Color(0xFFFFC400),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.25),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Icon(
+                        progress > 0.72
+                            ? Icons.check_rounded
+                            : Icons.arrow_forward_rounded,
+                        color: progress > 0.72 ? Colors.white : const Color(0xFF1B1B3A),
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

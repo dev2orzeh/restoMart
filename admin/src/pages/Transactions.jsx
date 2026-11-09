@@ -1,29 +1,45 @@
-import { useState, useEffect } from 'react';
-import { Search, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Search, ArrowDownLeft, ArrowUpRight, X } from 'lucide-react';
 import StatusBadge from '../components/shared/StatusBadge';
 import Loader from '../components/shared/Loader';
 import { subscribeToAllTransactions, subscribeToOrders } from '../services/firebase';
 
 export default function Transactions() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlQ = searchParams.get('q') || '';
+  const [searchQuery, setSearchQuery] = useState(urlQ);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    const qParam = searchParams.get('q') || '';
+    setSearchQuery(qParam);
+  }, [searchParams]);
 
   useEffect(() => {
     let orderTxns = [];
     let ledgerTxns = [];
 
+    let allOrdersList = [];
+
     const unsubscribeOrders = subscribeToOrders((orders) => {
-      orderTxns = orders.map((o) => ({
-        id: `TXN-${o.id.replace(/^RM-/, '')}`,
+      allOrdersList = orders;
+      const activeOrders = orders.filter((o) => {
+        const st = (o.status || '').toLowerCase().trim();
+        return !st.includes('cancel') && !st.includes('reject');
+      });
+
+      orderTxns = activeOrders.map((o) => ({
+        id: `TXN-${String(o.id || '').replace(/^RM-/, '')}`,
         orderId: o.id,
         customer: o.customer || 'Customer',
         date: o.date || 'N/A',
         amount: parseFloat(o.total || 0),
         method: o.payment || 'Cash on delivery',
         type: 'debit',
-        description: `Order ${o.id}`,
-        status: o.status === 'delivered' ? 'paid' : o.status === 'cancelled' ? 'failed' : 'pending',
+        description: `Order #${String(o.id || '').replace(/^#/, '')}`,
+        status: o.status === 'delivered' ? 'paid' : 'pending',
       }));
 
       combineAndSet();
@@ -35,12 +51,33 @@ export default function Transactions() {
     });
 
     function combineAndSet() {
-      // Merge Khata transactions and Order transactions
-      const combined = [...ledgerTxns];
+      const cancelledIds = new Set(
+        allOrdersList
+          .filter((o) => {
+            const st = (o.status || '').toLowerCase().trim();
+            return st.includes('cancel') || st.includes('reject');
+          })
+          .map((o) => String(o.id || '').replaceAll('#', '').trim())
+      );
+
+      // Merge Khata transactions and Order transactions, filtering out any cancelled orders or reversals
+      const combined = ledgerTxns.filter((t) => {
+        const oId = String(t.orderId || t.description || '').replaceAll('#', '').replace('Order', '').trim();
+        const desc = String(t.description || '').toLowerCase();
+        const pMethod = String(t.method || '').toLowerCase();
+        if (pMethod === 'system_reversal' || desc.includes('cancel') || desc.includes('reversal')) {
+          return false;
+        }
+        if (cancelledIds.has(oId)) {
+          return false;
+        }
+        return true;
+      });
 
       // Add order transactions if not already in ledger
       orderTxns.forEach((ot) => {
-        if (!combined.some((t) => t.orderId === ot.orderId)) {
+        const cleanOtId = String(ot.orderId || '').replaceAll('#', '').trim();
+        if (!cancelledIds.has(cleanOtId) && !combined.some((t) => String(t.orderId || '').replaceAll('#', '').trim() === cleanOtId)) {
           combined.push(ot);
         }
       });
@@ -55,16 +92,42 @@ export default function Transactions() {
     };
   }, []);
 
-  const filteredTransactions = transactions.filter((txn) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      txn.id.toLowerCase().includes(q) ||
-      txn.customer.toLowerCase().includes(q) ||
-      (txn.orderId && txn.orderId.toLowerCase().includes(q)) ||
-      (txn.description && txn.description.toLowerCase().includes(q))
-    );
-  });
+  const handleSearchChange = (val) => {
+    setSearchQuery(val);
+    if (val.trim()) {
+      setSearchParams({ q: val }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  const filteredTransactions = useMemo(() => {
+    if (!searchQuery || !searchQuery.trim()) return transactions;
+    const q = searchQuery.toLowerCase().trim();
+    const cleanQ = q.replace(/^rm-?/i, '').replace(/^#/i, '').trim();
+
+    return transactions.filter((txn) => {
+      const id = String(txn.id || '').toLowerCase();
+      const customer = String(txn.customer || '').toLowerCase();
+      const orderId = String(txn.orderId || '').toLowerCase();
+      const cleanOrderId = orderId.replace(/^rm-?/i, '').replace(/^#/i, '').trim();
+      const description = String(txn.description || '').toLowerCase();
+      const method = String(txn.method || '').toLowerCase();
+      const amount = String(txn.amount || '').toLowerCase();
+
+      return (
+        id.includes(q) ||
+        (cleanQ.length > 0 && id.includes(cleanQ)) ||
+        customer.includes(q) ||
+        orderId.includes(q) ||
+        (cleanQ.length > 0 && cleanOrderId.includes(cleanQ)) ||
+        description.includes(q) ||
+        (cleanQ.length > 0 && description.includes(cleanQ)) ||
+        method.includes(q) ||
+        amount.includes(q)
+      );
+    });
+  }, [transactions, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -81,9 +144,18 @@ export default function Transactions() {
           type="text"
           placeholder="Search by Transaction ID, Customer, or Order..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="input-field w-full pl-10"
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="input-field w-full pl-10 pr-9"
         />
+        {searchQuery && (
+          <button
+            onClick={() => handleSearchChange('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5"
+            title="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {loading ? (

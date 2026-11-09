@@ -81,16 +81,20 @@ class ProductCard extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(12.0),
                     child: imagePath.isEmpty
-                      ? const Icon(Icons.image_not_supported, color: Colors.grey)
+                      ? Icon(Icons.inventory_2_outlined, color: const Color(0xFF25258F).withValues(alpha: 0.35), size: 36)
                       : imagePath.startsWith('http')
                         ? CachedNetworkImage(
                             imageUrl: imagePath,
                             fit: BoxFit.contain,
                             memCacheWidth: 240,
                             placeholder: (context, url) => const Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
-                            errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.grey),
+                            errorWidget: (context, url, error) => Icon(Icons.inventory_2_outlined, color: const Color(0xFF25258F).withValues(alpha: 0.35), size: 36),
                           )
-                        : Image.asset(imagePath, fit: BoxFit.contain, errorBuilder: (_,__,___) => const Icon(Icons.broken_image, color: Colors.grey)),
+                        : Image.asset(
+                            imagePath, 
+                            fit: BoxFit.contain, 
+                            errorBuilder: (_,__,___) => Icon(Icons.inventory_2_outlined, color: const Color(0xFF25258F).withValues(alpha: 0.35), size: 36),
+                          ),
                   ),
                 ),
                 if (discountPercent > 0)

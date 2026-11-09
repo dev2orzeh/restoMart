@@ -73,67 +73,151 @@ class LedgerView extends StatelessWidget {
                   bottomRight: Radius.circular(24),
                 ),
               ),
-              child: Column(
-                children: [
-                  const Text('Outstanding Balance', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Rs. ${NumberFormat("#,##0").format(controller.balance.value)}', 
-                    style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)
-                  ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+              child: Builder(
+                builder: (context) {
+                  final bal = controller.balance.value;
+                  final isToPay = bal > 0;
+                  final isAdvance = bal < 0;
+
+                  final Color statusColor = isToPay
+                      ? const Color(0xFFFF5252) // Red for amount to pay
+                      : isAdvance
+                          ? const Color(0xFF00E676) // Green for advance
+                          : Colors.white;
+
+                  final String statusLabel = isToPay
+                      ? 'BALANCE TO PAY (YOU OWE)'
+                      : isAdvance
+                          ? 'ADVANCE BALANCE (CREDIT)'
+                          : 'ALL DUES SETTLED';
+
+                  final IconData statusIcon = isToPay
+                      ? Icons.arrow_circle_up_rounded
+                      : isAdvance
+                          ? Icons.arrow_circle_down_rounded
+                          : Icons.check_circle_outline_rounded;
+
+                  final String displayAmount = isAdvance
+                      ? 'Rs. ${NumberFormat("#,##0").format(bal.abs())}'
+                      : 'Rs. ${NumberFormat("#,##0").format(bal)}';
+
+                  return Column(
                     children: [
-                      Column(
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: statusColor.withValues(alpha: 0.7)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(statusIcon, color: statusColor, size: 15),
+                            const SizedBox(width: 6),
+                            Text(
+                              statusLabel,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        displayAmount, 
+                        style: TextStyle(
+                          color: statusColor, 
+                          fontSize: 38, 
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isToPay
+                            ? 'Outstanding amount to pay'
+                            : isAdvance
+                                ? 'Surplus credit balance in your account'
+                                : 'No pending balance',
+                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                      ),
+                      const SizedBox(height: 22),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          const Text('Total Orders', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          Text('Rs. ${NumberFormat("#,##0").format(controller.totalDebit.value)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                          Column(
+                            children: [
+                              const Text('Total Orders', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                              const SizedBox(height: 4),
+                              Text('Rs. ${NumberFormat("#,##0").format(controller.totalDebit.value)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                            ],
+                          ),
+                          Container(height: 40, width: 1, color: Colors.white24),
+                          Column(
+                            children: [
+                              const Text('Total Paid', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                              const SizedBox(height: 4),
+                              Text('Rs. ${NumberFormat("#,##0").format(controller.totalCredit.value)}', style: const TextStyle(color: Color(0xFF00E676), fontWeight: FontWeight.bold, fontSize: 16)),
+                            ],
+                          ),
                         ],
                       ),
-                      Container(height: 40, width: 1, color: Colors.white24),
-                      Column(
-                        children: [
-                          const Text('Total Paid', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                          const SizedBox(height: 4),
-                          Text('Rs. ${NumberFormat("#,##0").format(controller.totalCredit.value)}', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 16)),
-                        ],
+                      const SizedBox(height: 24),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final user = FirebaseAuth.instance.currentUser;
+                          if (user == null) {
+                            Get.snackbar('Notice', 'Please login to download statement.', backgroundColor: Colors.white, colorText: Colors.black);
+                            return;
+                          }
+
+                          Get.snackbar(
+                            'Generating Statement',
+                            'Please wait while your PDF statement is being prepared...',
+                            snackPosition: SnackPosition.BOTTOM,
+                            backgroundColor: Colors.white,
+                            colorText: const Color(0xFF25258F),
+                            icon: const Icon(Icons.picture_as_pdf, color: Color(0xFF25258F)),
+                            duration: const Duration(seconds: 2),
+                          );
+
+                          try {
+                            final formattedTxns = controller.transactions.map((txn) {
+                              return {
+                                ...txn,
+                                'date': txn['date'] != null ? DateFormat('MMM d, yyyy h:mm a').format((txn['date'] as Timestamp).toDate()) : 'N/A'
+                              };
+                            }).toList();
+                            
+                            await PdfInvoiceService.generateAndPrintLedgerStatement(
+                              user.displayName ?? 'Customer',
+                              user.email ?? '',
+                              user.phoneNumber ?? '',
+                              controller.totalDebit.value,
+                              controller.totalCredit.value,
+                              controller.balance.value,
+                              formattedTxns,
+                            );
+                          } catch (e) {
+                            Get.snackbar('Error', 'Failed to generate statement: $e', backgroundColor: Colors.red.shade50, colorText: Colors.red);
+                          }
+                        },
+                        icon: const Icon(Icons.download, color: Colors.white, size: 18),
+                        label: const Text('Download Statement', style: TextStyle(color: Colors.white)),
+                        style: OutlinedButton.styleFrom(
+                          side: const BorderSide(color: Colors.white54),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                        ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 24),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      final user = FirebaseAuth.instance.currentUser;
-                      if (user == null || controller.transactions.isEmpty) return;
-                      
-                      final formattedTxns = controller.transactions.map((txn) {
-                        return {
-                          ...txn,
-                          'date': txn['date'] != null ? DateFormat('MMM d, yyyy h:mm a').format((txn['date'] as Timestamp).toDate()) : 'N/A'
-                        };
-                      }).toList();
-                      
-                      PdfInvoiceService.generateAndPrintLedgerStatement(
-                        user.displayName ?? 'Customer',
-                        user.email ?? '',
-                        '', // phone
-                        controller.totalDebit.value,
-                        controller.totalCredit.value,
-                        controller.balance.value,
-                        formattedTxns,
-                      );
-                    },
-                    icon: const Icon(Icons.download, color: Colors.white, size: 18),
-                    label: const Text('Download Statement', style: TextStyle(color: Colors.white)),
-                    style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.white54),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8)
-                    ),
-                  )
-                ],
+                  );
+                },
               ),
             ),
 
@@ -190,7 +274,7 @@ class LedgerView extends StatelessWidget {
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 15,
-                                  color: isDebit ? Colors.black87 : Colors.green.shade600,
+                                  color: isDebit ? const Color(0xFFD32F2F) : const Color(0xFF2E7D32),
                                 ),
                               ),
                               if (txn['paymentMethod'] != null)

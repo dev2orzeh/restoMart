@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
 import 'package:get/get.dart';
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter/material.dart';
 import '../../modules/orders/controllers/orders_controller.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -152,23 +151,73 @@ class EmailService {
   }
 
   static Future<void> sendCancellationEmail(OrderModel order, String recipientEmail) async {
-    if (_smtpUsername.isEmpty) return;
+    if (_smtpUsername.isEmpty) {
+      print('SMTP_USERNAME is empty; skipping direct app cancellation email.');
+      return;
+    }
+
+    if (recipientEmail.isEmpty || !recipientEmail.contains('@') || recipientEmail.contains('guest@')) {
+      print('Invalid recipient email ($recipientEmail); skipping cancellation email.');
+      return;
+    }
 
     final smtpServer = _getSmtpServer();
 
+    String itemsSummary = '';
+    if (order.items.isNotEmpty) {
+      itemsSummary = order.items.map((i) => '${i.quantity}x ${i.name}').take(3).join(', ');
+      if (order.items.length > 3) itemsSummary += ' (+${order.items.length - 3} more)';
+    }
+
     final htmlBody = '''
-<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; padding: 20px; border: 1px solid #eee; border-radius: 12px;">
-  <div style="text-align: center; margin-bottom: 20px;">
-    <h2 style="color: #D32F2F; margin: 0;">Order Cancelled</h2>
+<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
+  <div style="background-color: #25258F; padding: 24px; text-align: center;">
+    <h2 style="color: #ffffff; font-size: 26px; font-weight: 900; margin: 0;">RestoMart <span style="color:#FFC400;">B2B</span></h2>
+    <p style="color: #ffffff99; margin: 6px 0 0; font-size: 13px;">Order Status Update</p>
   </div>
   
-  <p style="font-size: 16px;">Hi there,</p>
-  <p style="font-size: 16px;">Your RestoMart order <strong>${order.id}</strong> has been successfully cancelled as per your request.</p>
-  <p style="font-size: 16px;">If you have already paid for this order, the refund process will be initiated shortly according to our policies.</p>
-  
-  <div style="text-align: center; margin-top: 30px;">
-    <p style="margin: 5px 0;">Until next time,</p>
-    <h3 style="color: #25258F; margin: 0;">Your RestoMart team</h3>
+  <div style="padding: 24px;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span style="display: inline-block; background-color: #FFEBEE; color: #D32F2F; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 14px;">
+        Order Cancelled
+      </span>
+      <h1 style="color: #25258F; font-size: 22px; margin-top: 14px;">Order #${order.id} has been cancelled</h1>
+      <p style="color: #666; font-size: 14px; margin: 8px 0 0;">Your cancellation request has been processed successfully.</p>
+    </div>
+
+    <table style="width: 100%; font-size: 14px; margin-bottom: 20px; background-color: #f9f9f9; padding: 16px; border-radius: 8px;">
+      <tr>
+        <td style="padding: 6px 0; color: #666;"><strong>Order ID:</strong></td>
+        <td style="text-align: right; font-weight: bold;">#${order.id}</td>
+      </tr>
+      <tr>
+        <td style="padding: 6px 0; color: #666;"><strong>Order Date:</strong></td>
+        <td style="text-align: right;">${order.date.toLocal().toString().split('.')[0]}</td>
+      </tr>
+      <tr>
+        <td style="padding: 6px 0; color: #666;"><strong>Total Amount:</strong></td>
+        <td style="text-align: right; font-weight: bold; color: #D32F2F;">Rs. ${order.total.toStringAsFixed(2)}</td>
+      </tr>
+      ${itemsSummary.isNotEmpty ? '''
+      <tr>
+        <td style="padding: 6px 0; color: #666;"><strong>Items:</strong></td>
+        <td style="text-align: right;">$itemsSummary</td>
+      </tr>
+      ''' : ''}
+    </table>
+
+    <p style="font-size: 14px; color: #555; line-height: 1.5;">
+      If you have already paid for this order, your refund or khata credit adjustment will be processed in accordance with our return and cancellation policies.
+    </p>
+
+    <div style="text-align: center; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+      <p style="margin: 0; color: #888; font-size: 13px;">Need help or have questions?</p>
+      <p style="margin: 4px 0 0; color: #25258F; font-weight: bold;">support@restomart.pk | +92 300 0000000</p>
+    </div>
+  </div>
+
+  <div style="background-color: #f4f5f7; padding: 16px; text-align: center; font-size: 11px; color: #888;">
+    <p style="margin: 0;">RestoMart B2B, Lahore, Pakistan<br>© 2026 RestoMart</p>
   </div>
 </div>
 ''';
@@ -180,16 +229,113 @@ class EmailService {
       ..html = htmlBody;
 
     try {
-      await send(message, smtpServer);
+      final report = await send(message, smtpServer);
+      print('Cancellation email sent successfully: $report');
       Get.snackbar(
-        'Email Sent',
-        'Cancellation email sent to $recipientEmail',
+        'Cancellation Email Sent',
+        'Confirmation email sent to $recipientEmail',
         snackPosition: SnackPosition.TOP,
         backgroundColor: Colors.green.shade50,
         colorText: Colors.green.shade900,
+        duration: const Duration(seconds: 3),
       );
     } catch (e) {
       print('Cancellation email failed to send: $e');
+    }
+  }
+
+  static Future<void> sendPaymentReceivedEmail({
+    required String recipientEmail,
+    required double amount,
+    required String paymentMethod,
+    required double newBalance,
+    String? description,
+  }) async {
+    if (_smtpUsername.isEmpty) return;
+
+    if (recipientEmail.isEmpty || !recipientEmail.contains('@') || recipientEmail.contains('guest@')) {
+      return;
+    }
+
+    final smtpServer = _getSmtpServer();
+
+    final isToPay = newBalance > 0;
+    final isAdvance = newBalance < 0;
+    final balanceText = isToPay
+        ? 'Rs. ${newBalance.toStringAsFixed(2)} (Payable)'
+        : isAdvance
+            ? 'Rs. ${newBalance.abs().toStringAsFixed(2)} (Advance Credit)'
+            : 'Rs. 0.00 (All Cleared)';
+    final balanceColor = isToPay ? '#D32F2F' : '#2E7D32';
+
+    final htmlBody = '''
+<div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
+  <div style="background-color: #25258F; padding: 24px; text-align: center;">
+    <h2 style="color: #ffffff; font-size: 26px; font-weight: 900; margin: 0;">RestoMart <span style="color:#FFC400;">B2B</span></h2>
+    <p style="color: #ffffff99; margin: 6px 0 0; font-size: 13px;">Official Payment Receipt • Business Khata</p>
+  </div>
+  
+  <div style="padding: 24px;">
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span style="display: inline-block; background-color: #E8F5E9; color: #2E7D32; padding: 6px 16px; border-radius: 20px; font-weight: bold; font-size: 14px;">
+        Payment Received ✅
+      </span>
+      <h1 style="color: #25258F; font-size: 24px; margin-top: 14px;">Payment Received: Rs. ${amount.toStringAsFixed(2)}</h1>
+      <p style="color: #666; font-size: 14px; margin: 8px 0 0;">This payment has been credited to your RestoMart Business Khata.</p>
+    </div>
+
+    <table style="width: 100%; font-size: 14px; margin-bottom: 20px; background-color: #f9f9f9; padding: 16px; border-radius: 8px;">
+      <tr>
+        <td style="padding: 6px 0; color: #666;"><strong>Amount Paid:</strong></td>
+        <td style="text-align: right; font-weight: bold; color: #2E7D32; font-size: 16px;">Rs. ${amount.toStringAsFixed(2)}</td>
+      </tr>
+      <tr>
+        <td style="padding: 6px 0; color: #666;"><strong>Payment Mode:</strong></td>
+        <td style="text-align: right; font-weight: bold;">$paymentMethod</td>
+      </tr>
+      <tr>
+        <td style="padding: 6px 0; color: #666;"><strong>Date & Time:</strong></td>
+        <td style="text-align: right;">${DateTime.now().toLocal().toString().split('.')[0]}</td>
+      </tr>
+      ${description != null && description.isNotEmpty ? '''
+      <tr>
+        <td style="padding: 6px 0; color: #666;"><strong>Description:</strong></td>
+        <td style="text-align: right;">$description</td>
+      </tr>
+      ''' : ''}
+      <tr style="border-top: 1px solid #ddd;">
+        <td style="padding: 10px 0 4px; color: #333;"><strong>Updated Balance:</strong></td>
+        <td style="text-align: right; font-weight: bold; font-size: 16px; color: $balanceColor; padding-top: 10px;">$balanceText</td>
+      </tr>
+    </table>
+
+    <p style="font-size: 14px; color: #555; line-height: 1.5;">
+      You can review your complete transaction history and download official ledger statements at any time from <strong>My Business Khata</strong> in the RestoMart app.
+    </p>
+
+    <div style="text-align: center; margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
+      <p style="margin: 0; color: #888; font-size: 13px;">RestoMart B2B Billing Support</p>
+      <p style="margin: 4px 0 0; color: #25258F; font-weight: bold;">support@restomart.pk | +92 300 0000000</p>
+    </div>
+  </div>
+
+  <div style="background-color: #f4f5f7; padding: 16px; text-align: center; font-size: 11px; color: #888;">
+    <p style="margin: 0;">RestoMart B2B, Lahore, Pakistan<br>© 2026 RestoMart</p>
+  </div>
+</div>
+''';
+
+    final message = Message()
+      ..from = Address(_fromEmail, 'RestoMart B2B')
+      ..recipients.add(recipientEmail)
+      ..subject = 'Payment Receipt: Rs. ${amount.toStringAsFixed(0)} Credited to your Khata'
+      ..html = htmlBody;
+
+    try {
+      final report = await send(message, smtpServer);
+      print('Payment receipt email sent successfully: $report');
+    } catch (e) {
+      print('Payment receipt email error: $e');
     }
   }
 }

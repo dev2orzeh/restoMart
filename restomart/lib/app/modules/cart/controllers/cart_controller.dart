@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/services/woocommerce_api_service.dart';
+import '../../../core/utils/error_handler.dart';
 
 class CartItem {
   final String id;
@@ -32,12 +33,12 @@ class CartItem {
   };
 
   factory CartItem.fromJson(Map<String, dynamic> json) => CartItem(
-    id: json['id'] ?? '0',
-    imagePath: json['imagePath'],
-    name: json['name'],
-    price: (json['price'] as num).toDouble(),
-    originalPrice: json['originalPrice'] != null ? (json['originalPrice'] as num).toDouble() : null,
-    quantity: json['quantity'] as int,
+    id: (json['id'] ?? json['product_id'] ?? '0').toString(),
+    imagePath: (json['imagePath'] ?? json['image'] ?? '').toString(),
+    name: (json['name'] ?? json['title'] ?? 'Product').toString(),
+    price: (json['price'] as num?)?.toDouble() ?? 0.0,
+    originalPrice: (json['originalPrice'] as num?)?.toDouble(),
+    quantity: (json['quantity'] as num?)?.toInt() ?? 1,
   );
 }
 
@@ -90,11 +91,16 @@ class CartController extends GetxController {
     // Sync active cart to WooCommerce for abandoned cart tracking
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      WooCommerceApiService.syncActiveCart(
-        customerId: user.uid,
-        cartItems: cartList,
-        total: totalPrice,
-      );
+      try {
+        await WooCommerceApiService.syncActiveCart(
+          customerId: user.uid,
+          cartItems: cartList,
+          total: totalPrice,
+        ).timeout(const Duration(seconds: 15));
+      } catch (e) {
+        // Background sync only; never block the user
+        debugPrint('Cart sync skipped: $e');
+      }
     }
   }
 
@@ -115,7 +121,14 @@ class CartController extends GetxController {
   }
 
   Future<bool> applyCoupon(String code) async {
-    final coupon = await WooCommerceApiService.validateCoupon(code);
+    Map<String, dynamic>? coupon;
+    try {
+      coupon = await WooCommerceApiService.validateCoupon(code)
+          .timeout(const Duration(seconds: 20));
+    } catch (e) {
+      AppErrorHandler.showError('Coupon Error', e);
+      return false;
+    }
     if (coupon != null) {
       appliedCouponCode.value = coupon['code'];
       final type = coupon['discount_type'];

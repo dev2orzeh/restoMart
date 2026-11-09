@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   ShoppingCart,
   DollarSign,
@@ -12,6 +13,7 @@ import {
   Save,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-react';
 import StatCard from '../components/shared/StatCard';
 import StatusBadge from '../components/shared/StatusBadge';
@@ -24,19 +26,25 @@ import {
   mockDashboardStats,
 } from '../data/mockData';
 import { getProducts, updateProduct, createProduct, getCategories } from '../services/woocommerce';
-import { useEffect } from 'react';
 
 export default function Products() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlQ = searchParams.get('q') || '';
+  const [searchQuery, setSearchQuery] = useState(urlQ);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 25;
   const [filterOpen, setFilterOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState(null);
   const [editProduct, setEditProduct] = useState(null);
   const [viewProduct, setViewProduct] = useState(null);
+
+  useEffect(() => {
+    const qParam = searchParams.get('q') || '';
+    setSearchQuery(qParam);
+  }, [searchParams]);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [newProduct, setNewProduct] = useState({
     name: '', brand: '', category: '', price: 0, stock: 0, image: ''
@@ -75,17 +83,27 @@ export default function Products() {
     }
   };
 
+  const handleSearchChange = (val) => {
+    setSearchQuery(val);
+    if (val.trim()) {
+      setSearchParams({ q: val }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
   const filteredProducts = useMemo(() => {
     let prods = [...products];
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      prods = prods.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.productId.toLowerCase().includes(q) ||
-          p.brand.toLowerCase().includes(q)
-      );
+    if (searchQuery && searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      prods = prods.filter((p) => {
+        const name = String(p.name || '').toLowerCase();
+        const pid = String(p.productId || p.id || '').toLowerCase();
+        const brand = String(p.brand || '').toLowerCase();
+        const category = String(p.category || '').toLowerCase();
+        return name.includes(q) || pid.includes(q) || brand.includes(q) || category.includes(q);
+      });
     }
 
     if (activeFilters) {
@@ -225,9 +243,18 @@ export default function Products() {
             type="text"
             placeholder="Search products..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-field w-full pl-10"
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="input-field w-full pl-10 pr-9"
           />
+          {searchQuery && (
+            <button
+              onClick={() => handleSearchChange('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5"
+              title="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         <button className="btn-outline flex items-center gap-2">

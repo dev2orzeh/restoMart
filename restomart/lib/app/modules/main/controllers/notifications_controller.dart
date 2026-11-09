@@ -142,18 +142,22 @@ class NotificationsController extends GetxController {
     // Also persist to Firestore if user logged in
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('notifications')
-          .add({
-        'title': title,
-        'description': description,
-        'action': action ?? 'order_view',
-        'type': 'general',
-        'createdAt': FieldValue.serverTimestamp(),
-        'isRead': false,
-      }).catchError((e) => debugPrint('Error writing notification to Firestore: $e'));
+      try {
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('notifications')
+            .add({
+          'title': title,
+          'description': description,
+          'action': action ?? 'order_view',
+          'type': 'general',
+          'createdAt': FieldValue.serverTimestamp(),
+          'isRead': false,
+        });
+      } catch (e) {
+        debugPrint('Error writing notification to Firestore: $e');
+      }
     }
   }
 

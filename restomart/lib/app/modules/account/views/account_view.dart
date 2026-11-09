@@ -12,7 +12,10 @@ import '../../favorites/views/favorites_view.dart';
 import '../../auth/controllers/auth_controller.dart';
 import 'edit_profile_view.dart';
 import '../../ledger/views/ledger_view.dart';
+import '../../checkout/controllers/address_controller.dart';
+import '../../checkout/views/location_picker_view.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/utils/error_handler.dart';
 
 class AccountView extends StatelessWidget {
   const AccountView({super.key});
@@ -119,50 +122,49 @@ class AccountView extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          authController.userName.value,
-                                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      if (authController.businessName.value.isNotEmpty)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFFFD54F),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: Text(
-                                            authController.businessName.value,
-                                            style: const TextStyle(color: Color(0xFF25258F), fontSize: 16, fontWeight: FontWeight.bold),
-                                          ),
-                                        ),
-                                    ],
+                                  Text(
+                                    authController.userName.value,
+                                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
+                                  if (authController.businessName.value.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFFD54F),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        authController.businessName.value,
+                                        style: const TextStyle(color: Color(0xFF25258F), fontSize: 13, fontWeight: FontWeight.bold),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                   const SizedBox(height: 4),
                                   Text(
                                     authController.userEmail.value,
                                     style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 13),
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      Icon(Icons.phone, color: Colors.white.withValues(alpha: 0.7), size: 14),
-                                      const SizedBox(width: 4),
-                                      Expanded(
-                                        child: Text(
-                                          authController.userPhone.value,
-                                          style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
-                                          overflow: TextOverflow.ellipsis,
+                                  if (authController.userPhone.value.trim().isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.phone, color: Colors.white.withValues(alpha: 0.7), size: 14),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            authController.userPhone.value,
+                                            style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
+                                      ],
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -272,7 +274,6 @@ class AccountView extends StatelessWidget {
                 _buildMenuItem(Icons.location_on_outlined, 'Saved Addresses', 'Manage delivery locations', onTap: () {
                   _showSavedAddresses();
                 }),
-                _buildMenuItem(Icons.payment, 'Payment Methods', 'Manage cards and wallets'),
                 _buildMenuItem(Icons.notifications_outlined, 'Notifications', 'App alert settings', onTap: () {
                   final notifCtrl = Get.put(AppAlertsController());
                   Get.bottomSheet(
@@ -389,6 +390,11 @@ class AccountView extends StatelessWidget {
   }
 
   void _showSavedAddresses() {
+    final addressController = Get.isRegistered<AddressController>()
+        ? Get.find<AddressController>()
+        : Get.put(AddressController());
+    addressController.loadAddressesForCurrentUser();
+
     Get.bottomSheet(
       Container(
         padding: const EdgeInsets.all(24),
@@ -408,23 +414,100 @@ class AccountView extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             const Text('Saved Addresses', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF25258F))),
-            const SizedBox(height: 20),
-            _buildAddressCard('Karachi Kitchen - Main', 'DHA Phase 6, Main Boulevard, Lahore', true),
-            const SizedBox(height: 12),
-            _buildAddressCard('Karachi Kitchen - Branch', 'Gulberg III, Near Hafeez Center, Lahore', false),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.add, color: Color(0xFF25258F)),
-                label: const Text('Add New Address', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold)),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: Color(0xFF25258F)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            const SizedBox(height: 16),
+            Obx(() {
+              if (addressController.savedAddresses.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text('No saved addresses yet', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                  ),
+                );
+              }
+              return Column(
+                children: List.generate(addressController.savedAddresses.length, (index) {
+                  final addr = addressController.savedAddresses[index];
+                  final isDefault = index == 0;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _buildAddressCard(
+                      label: addr['label'] ?? 'Restaurant',
+                      address: addr['address'] ?? '',
+                      isDefault: isDefault,
+                      onSetDefault: () {
+                        addressController.setDefaultAddress(index);
+                      },
+                      onDelete: () {
+                        Get.defaultDialog(
+                          title: 'Delete Address',
+                          titleStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF25258F)),
+                          middleText: 'Are you sure you want to delete "${addr['label'] ?? 'Address'}"?',
+                          textConfirm: 'Delete',
+                          textCancel: 'Cancel',
+                          confirmTextColor: Colors.white,
+                          buttonColor: Colors.red,
+                          onConfirm: () {
+                            Get.back();
+                            addressController.deleteAddress(index);
+                            AppErrorHandler.showSuccess('Deleted', 'Address removed successfully.');
+                          },
+                        );
+                      },
+                    ),
+                  );
+                }),
+              );
+            }),
+            const SizedBox(height: 16),
+            const Text(
+              'Add New Address',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Get.back();
+                      _showAddAddressDialog(addressController);
+                    },
+                    icon: const Icon(Icons.edit_note, size: 18, color: Color(0xFF25258F)),
+                    label: const Text('Type Address', style: TextStyle(color: Color(0xFF25258F), fontWeight: FontWeight.bold, fontSize: 13)),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: Color(0xFF25258F), width: 1.5),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Get.back();
+                      final result = await Get.to(() => const LocationPickerView());
+                      if (result != null && result['address'] != null) {
+                        final String addr = result['address'] as String;
+                        final String label = (result['label'] as String?) ?? 'New Location';
+                        final lat = (result['lat'] as num?)?.toDouble();
+                        final lng = (result['lng'] as num?)?.toDouble();
+                        addressController.addAddress(label, addr, lat: lat, lng: lng);
+                        _showSavedAddresses();
+                        AppErrorHandler.showSuccess('Address Added', addr);
+                      }
+                    },
+                    icon: const Icon(Icons.map_rounded, size: 18, color: Colors.white),
+                    label: const Text('Pick on Map', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25258F),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
           ],
@@ -434,7 +517,60 @@ class AccountView extends StatelessWidget {
     );
   }
 
-  Widget _buildAddressCard(String title, String address, bool isDefault) {
+  void _showAddAddressDialog(AddressController addressController) {
+    final labelCtrl = TextEditingController(text: 'Restaurant');
+    final addressCtrl = TextEditingController();
+
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Add New Address', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF25258F))),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: labelCtrl,
+              decoration: const InputDecoration(labelText: 'Address Label (e.g. Branch 2)'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: addressCtrl,
+              decoration: const InputDecoration(labelText: 'Full Address'),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25258F), foregroundColor: Colors.white),
+            onPressed: () {
+              if (addressCtrl.text.trim().isNotEmpty) {
+                addressController.addAddress(
+                  labelCtrl.text.trim().isEmpty ? 'Restaurant' : labelCtrl.text.trim(),
+                  addressCtrl.text.trim(),
+                );
+                Get.back();
+                _showSavedAddresses();
+              }
+            },
+            child: const Text('Save Address'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddressCard({
+    required String label,
+    required String address,
+    required bool isDefault,
+    required VoidCallback onSetDefault,
+    VoidCallback? onDelete,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -443,8 +579,12 @@ class AccountView extends StatelessWidget {
         border: Border.all(color: isDefault ? const Color(0xFF25258F) : Colors.grey.shade300),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.location_on, color: isDefault ? const Color(0xFF25258F) : Colors.grey),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(Icons.location_on, color: isDefault ? const Color(0xFF25258F) : Colors.grey),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -452,21 +592,62 @@ class AccountView extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    Expanded(
+                      child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    ),
                     if (isDefault) ...[
-                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: const Color(0xFF25258F),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Text('Default', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                        child: const Text('Default Address', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ] else ...[
+                      InkWell(
+                        onTap: onSetDefault,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xFF25258F)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('Set as Default', style: TextStyle(color: Color(0xFF25258F), fontSize: 11, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                    if (onDelete != null) ...[
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: 'Address options',
+                        onSelected: (value) {
+                          if (value == 'remove') {
+                            onDelete();
+                          }
+                        },
+                        itemBuilder: (BuildContext context) => [
+                          const PopupMenuItem<String>(
+                            value: 'remove',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Remove Address',
+                                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(address, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               ],
             ),
@@ -862,7 +1043,7 @@ class HelpCenterView extends StatelessWidget {
 }
 
 class AppAlertsController extends GetxController {
-  final isEnabled = false.obs;
+  final isEnabled = true.obs;
 
   @override
   void onInit() {
@@ -872,30 +1053,44 @@ class AppAlertsController extends GetxController {
 
   Future<void> _loadState() async {
     final prefs = await SharedPreferences.getInstance();
-    isEnabled.value = prefs.getBool('notifications_enabled') ?? false;
+    if (prefs.containsKey('notifications_enabled')) {
+      isEnabled.value = prefs.getBool('notifications_enabled') ?? true;
+    } else {
+      // Check current permission state if no preference was explicitly saved yet
+      final settings = await FirebaseMessaging.instance.getNotificationSettings();
+      final hasPermission = settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+      isEnabled.value = hasPermission;
+      await prefs.setBool('notifications_enabled', hasPermission);
+    }
   }
 
   Future<void> toggle(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
     if (value) {
       final settings = await FirebaseMessaging.instance.requestPermission();
       if (settings.authorizationStatus == AuthorizationStatus.authorized || settings.authorizationStatus == AuthorizationStatus.provisional) {
         isEnabled.value = true;
+        await prefs.setBool('notifications_enabled', true);
         // Optionally fetch token to re-register on server
         await FirebaseMessaging.instance.getToken();
         Get.snackbar('Notifications Enabled', 'You will now receive alerts.', snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.green.shade50, colorText: Colors.green.shade800);
       } else {
         isEnabled.value = false;
+        await prefs.setBool('notifications_enabled', false);
         Get.snackbar('Permission Denied', 'Please enable notifications in your device settings.', snackPosition: SnackPosition.BOTTOM, backgroundColor: Colors.red.shade50, colorText: Colors.red.shade800);
       }
     } else {
       isEnabled.value = false;
-      // This actually stops push notifications for this app instance
-      await FirebaseMessaging.instance.deleteToken();
+      await prefs.setBool('notifications_enabled', false);
+      // Suppress and unsubscribe
+      try {
+        await FirebaseMessaging.instance.deleteToken();
+      } catch (e) {
+        // Ignore deletion errors if offline
+      }
       Get.snackbar('Notifications Disabled', 'You will no longer receive alerts.', snackPosition: SnackPosition.BOTTOM);
     }
-    
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('notifications_enabled', isEnabled.value);
   }
 }
 

@@ -2,15 +2,24 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="restomart"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         
+        <!-- FCM Default Notification Channel -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="restomart_high_importance_channel" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/launcher_icon" />
+
         <!-- Google Maps API Key -->
         <meta-data android:name="com.google.android.geo.API_KEY"
-                   android:value="AIzaSyAV6zjgCwiQLd9__V5CN8cujzuz1TQC7Pk"/>
+                   android:value="AIzaSyD6YeHZtndlaifZ5y59glHqNciEbB-bhSQ"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"

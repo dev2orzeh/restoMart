@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../widgets/product_card.dart';
 import '../../cart/controllers/cart_controller.dart';
+import 'all_products_view.dart';
 
 class PromotionsView extends StatefulWidget {
   const PromotionsView({super.key});
@@ -15,8 +16,6 @@ class _PromotionsViewState extends State<PromotionsView> {
   late final PageController _pageController;
   Timer? _autoSwipeTimer;
   int _currentPage = 0;
-  String _selectedTab = 'All';
-  final ScrollController _scrollController = ScrollController();
 
   final List<Map<String, String>> _banners = [
     {
@@ -35,17 +34,78 @@ class _PromotionsViewState extends State<PromotionsView> {
       'image': 'assets/images/RestoMart special offers banner-1.png',
       'title': 'RestoMart Mega B2B Special Offers',
       'tag': 'SPECIAL OFFERS',
-      'filter': 'Special Offers',
+      'filter': 'Weekly Deals',
     },
   ];
 
-  final List<String> _tabs = [
-    'All',
-    'Weekly Deals',
-    'Regular Deals',
-    'Combo Deals',
-    'Buy 1 Get 1',
-    'Special Offers',
+  final List<Map<String, dynamic>> _weeklyDeals = [
+    {
+      'id': 'promo_frozen_1',
+      'name': 'RestoMart Special Frozen Food Mega Saver Pack',
+      'salePrice': 2850.0,
+      'originalPrice': 3500.0,
+      'discountPercent': 18,
+      'imagePath': 'assets/images/RestoMart-Frozen-Food-Deal-Offer-430x430.png',
+    },
+    {
+      'id': 'promo_oil_1',
+      'name': 'Mezan Perfect Frying Oil 16 Ltr Tin',
+      'salePrice': 7490.0,
+      'originalPrice': 8990.0,
+      'discountPercent': 17,
+      'imagePath': 'assets/images/B2B-SKU-Mezan-Perfect-Frying-Oil-Tin-16-Ltr-430x430.webp',
+    },
+    {
+      'id': 'promo_sufi_1',
+      'name': 'Sufi Frying Oil Can 5 Ltr Mega Saver',
+      'salePrice': 2990.0,
+      'originalPrice': 3800.0,
+      'discountPercent': 21,
+      'imagePath': 'assets/images/sufioilCan.webp',
+    },
+    {
+      'id': 'promo_tea_1',
+      'name': 'Lipton Yellow Label Tea Bags 100s Pack',
+      'salePrice': 1150.0,
+      'originalPrice': 1350.0,
+      'discountPercent': 15,
+      'imagePath': 'assets/images/Lipton-Tea-Bag-–-100pcs-430x430.webp',
+    },
+  ];
+
+  final List<Map<String, dynamic>> _regularDeals = [
+    {
+      'id': 'promo_cheese_1',
+      'name': 'Adams White Cheese Slices 1kg Pack',
+      'salePrice': 1290.0,
+      'originalPrice': 1550.0,
+      'discountPercent': 17,
+      'imagePath': 'assets/images/Adams-Cheese-Slice-White-1kg-430x430.webp',
+    },
+    {
+      'id': 'promo_combo_1',
+      'name': 'Cheese & Beverage Ultimate Combo Pack',
+      'salePrice': 1850.0,
+      'originalPrice': 2450.0,
+      'discountPercent': 25,
+      'imagePath': 'assets/images/Cheese, oil and beverage combo deals-3.png',
+    },
+    {
+      'id': 'promo_nuts_1',
+      'name': 'Premium Dry Fruits Almonds 1kg Gift Pack',
+      'salePrice': 2490.0,
+      'originalPrice': 3200.0,
+      'discountPercent': 22,
+      'imagePath': 'assets/images/Almond-1kg-430x430.webp',
+    },
+    {
+      'id': 'promo_bogo_1',
+      'name': 'Coca-Cola 1.5L Family Bottle (Buy 1 Get 1)',
+      'salePrice': 220.0,
+      'originalPrice': 440.0,
+      'discountPercent': 50,
+      'imagePath': 'assets/images/cocaCola1.jpg',
+    },
   ];
 
   @override
@@ -73,128 +133,16 @@ class _PromotionsViewState extends State<PromotionsView> {
   void dispose() {
     _autoSwipeTimer?.cancel();
     _pageController.dispose();
-    _scrollController.dispose();
     super.dispose();
   }
 
-  void _onTabSelected(String tabName) {
-    setState(() {
-      _selectedTab = tabName;
-    });
-  }
-
   void _onBannerTap(int index) {
-    final bannerFilter = _banners[index]['filter'] ?? 'All';
-    _onTabSelected(bannerFilter);
-    Get.snackbar(
-      _banners[index]['tag'] ?? 'Special Offer',
-      'Applied filter: ${_banners[index]['title']}',
-      snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: const Color(0xFF25258F),
-      colorText: Colors.white,
-      duration: const Duration(seconds: 2),
-    );
-  }
-
-  List<Map<String, dynamic>> _getPromoProducts() {
-    final List<Map<String, dynamic>> allPromos = [
-      {
-        'id': 'promo_combo_1',
-        'name': 'Cheese & Beverage Ultimate Combo Pack',
-        'salePrice': 1850.0,
-        'originalPrice': 2450.0,
-        'discountPercent': 25,
-        'imagePath': 'assets/images/Cheese, oil and beverage combo deals-3.png',
-        'category': 'Combo Deals',
-        'tag': 'Buy 1 Get 1',
-      },
-      {
-        'id': 'promo_oil_1',
-        'name': 'Mezan Perfect Frying Oil 16 Ltr Tin',
-        'salePrice': 7490.0,
-        'originalPrice': 8990.0,
-        'discountPercent': 17,
-        'imagePath': 'assets/images/B2B-SKU-Mezan-Perfect-Frying-Oil-Tin-16-Ltr-430x430.webp',
-        'category': 'Weekly Deals',
-        'tag': 'Weekly Deals',
-      },
-      {
-        'id': 'promo_cheese_1',
-        'name': 'Adams White Cheese Slices 1kg Pack',
-        'salePrice': 1290.0,
-        'originalPrice': 1550.0,
-        'discountPercent': 17,
-        'imagePath': 'assets/images/Adams-Cheese-Slice-White-1kg-430x430.webp',
-        'category': 'Regular Deals',
-        'tag': 'Regular Deals',
-      },
-      {
-        'id': 'promo_bev_1',
-        'name': 'Chilled Beverages Assortment Pack (12 Pcs)',
-        'salePrice': 990.0,
-        'originalPrice': 1400.0,
-        'discountPercent': 30,
-        'imagePath': 'assets/images/Chilled Beverage Assortment with Ice.png',
-        'category': 'Buy 1 Get 1',
-        'tag': 'Buy 1 Get 1',
-      },
-      {
-        'id': 'promo_sufi_1',
-        'name': 'Sufi Frying Oil Can 5 Ltr Mega Saver',
-        'salePrice': 2990.0,
-        'originalPrice': 3800.0,
-        'discountPercent': 21,
-        'imagePath': 'assets/images/sufioilCan.webp',
-        'category': 'Special Offers',
-        'tag': 'Special Offers',
-      },
-      {
-        'id': 'promo_nuts_1',
-        'name': 'Premium Dry Fruits Almonds 1kg Gift Pack',
-        'salePrice': 2490.0,
-        'originalPrice': 3200.0,
-        'discountPercent': 22,
-        'imagePath': 'assets/images/Almond-1kg-430x430.webp',
-        'category': 'Regular Deals',
-        'tag': 'Regular Deals',
-      },
-      {
-        'id': 'promo_bogo_1',
-        'name': 'Coca-Cola 1.5L Family Bottle (Buy 1 Get 1)',
-        'salePrice': 220.0,
-        'originalPrice': 440.0,
-        'discountPercent': 50,
-        'imagePath': 'assets/images/cocaCola1.jpg',
-        'category': 'Buy 1 Get 1',
-        'tag': 'Buy 1 Get 1',
-      },
-      {
-        'id': 'promo_tea_1',
-        'name': 'Lipton Yellow Label Tea Bags 100s Pack',
-        'salePrice': 1150.0,
-        'originalPrice': 1350.0,
-        'discountPercent': 15,
-        'imagePath': 'assets/images/Lipton-Tea-Bag-–-100pcs-430x430.webp',
-        'category': 'Weekly Deals',
-        'tag': 'Weekly Deals',
-      },
-    ];
-
-    if (_selectedTab == 'All') {
-      return allPromos;
-    }
-
-    return allPromos.where((p) {
-      final cat = (p['category'] ?? '').toString();
-      final tag = (p['tag'] ?? '').toString();
-      return cat == _selectedTab || tag == _selectedTab;
-    }).toList();
+    final bannerFilter = _banners[index]['filter'] ?? 'Weekly Deals';
+    Get.to(() => AllProductsView(initialCategory: bannerFilter, pageTitle: bannerFilter, onlyOnSale: true));
   }
 
   @override
   Widget build(BuildContext context) {
-    final promoProducts = _getPromoProducts();
-
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -218,58 +166,11 @@ class _PromotionsViewState extends State<PromotionsView> {
         ),
       ),
       body: SingleChildScrollView(
-        controller: _scrollController,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Clickable Filter Tabs
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _tabs.map((tab) {
-                  final isSelected = _selectedTab == tab;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: InkWell(
-                      onTap: () => _onTabSelected(tab),
-                      borderRadius: BorderRadius.circular(24),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFFFFD54F) : Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: isSelected ? const Color(0xFFFFC107) : Colors.grey.shade300,
-                            width: isSelected ? 1.5 : 1,
-                          ),
-                          boxShadow: isSelected ? [
-                            BoxShadow(
-                              color: Colors.amber.withValues(alpha: 0.3),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            )
-                          ] : [],
-                        ),
-                        child: Text(
-                          tab,
-                          style: TextStyle(
-                            color: isSelected ? const Color(0xFF1E293B) : const Color(0xFF25258F),
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Auto-Swipeable Banner Carousel (3 Banners requested by user)
+            // ── Auto-Swipeable Banner Carousel ──
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Container(
@@ -284,105 +185,101 @@ class _PromotionsViewState extends State<PromotionsView> {
                     ),
                   ],
                 ),
-                child: Stack(
-                  children: [
-                    PageView.builder(
-                      controller: _pageController,
-                      onPageChanged: (index) {
-                        setState(() {
-                          _currentPage = index;
-                        });
-                      },
-                      itemCount: _banners.length,
-                      itemBuilder: (context, index) {
-                        final banner = _banners[index];
-                        return GestureDetector(
-                          onTap: () => _onBannerTap(index),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Image.asset(
-                                banner['image']!,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  color: const Color(0xFF25258F),
-                                  child: Center(
-                                    child: Text(
-                                      banner['title']!,
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (index) {
+                    setState(() {
+                      _currentPage = index;
+                    });
+                  },
+                  itemCount: _banners.length,
+                  itemBuilder: (context, index) {
+                    final banner = _banners[index];
+                    return GestureDetector(
+                      onTap: () => _onBannerTap(index),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.asset(
+                            banner['image']!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: const Color(0xFF25258F),
+                              child: Center(
+                                child: Text(
+                                  banner['title']!,
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.45),
+                                  Colors.transparent,
+                                ],
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 14,
+                            left: 16,
+                            right: 16,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFD54F),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    banner['tag']!,
+                                    style: const TextStyle(
+                                      color: Color(0xFF1E293B),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
                                     ),
                                   ),
                                 ),
-                              ),
-                              Container(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.bottomCenter,
-                                    end: Alignment.topCenter,
-                                    colors: [
-                                      Colors.black.withValues(alpha: 0.45),
-                                      Colors.transparent,
-                                    ],
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
                                   ),
-                                ),
-                              ),
-                              Positioned(
-                                bottom: 14,
-                                left: 16,
-                                right: 16,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFFD54F),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        banner['tag']!,
-                                        style: const TextStyle(
-                                          color: Color(0xFF1E293B),
+                                  child: const Row(
+                                    children: [
+                                      Text(
+                                        'Tap to Shop',
+                                        style: TextStyle(
+                                          color: Color(0xFF25258F),
                                           fontSize: 11,
                                           fontWeight: FontWeight.bold,
                                         ),
                                       ),
-                                    ),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: const Row(
-                                        children: [
-                                          Text(
-                                            'Tap to Shop',
-                                            style: TextStyle(
-                                              color: Color(0xFF25258F),
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          SizedBox(width: 4),
-                                          Icon(Icons.arrow_forward, size: 12, color: Color(0xFF25258F)),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
+                                      SizedBox(width: 4),
+                                      Icon(Icons.arrow_forward, size: 12, color: Color(0xFF25258F)),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        );
-                      },
-                    ),
-                  ],
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
 
             // Carousel Page Indicators
             Row(
@@ -402,172 +299,42 @@ class _PromotionsViewState extends State<PromotionsView> {
               }),
             ),
 
-            const SizedBox(height: 20),
-
-            // Featured Promotional Offers Grid Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _selectedTab == 'All' ? 'Featured Promotional Deals' : 'Promotions: $_selectedTab',
-                  style: const TextStyle(
-                    color: Color(0xFF2C3E50),
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                InkWell(
-                  onTap: () => _onTabSelected('All'),
-                  child: const Row(
-                    children: [
-                      Text(
-                        'View All',
-                        style: TextStyle(
-                          color: Color(0xFF25258F),
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                      SizedBox(width: 4),
-                      Icon(Icons.arrow_forward, size: 14, color: Color(0xFF25258F)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 12),
-
-            // 4 Clickable Featured Promotion Cards
-            Row(
-              children: [
-                Expanded(
-                  child: _buildClickableDealCard(
-                    title: 'Buy 2 Get 1 Free',
-                    subtitle: 'Chilled Beverages Assortment',
-                    imagePath: 'assets/images/beverages.webp',
-                    badge: 'BOGO OFFER',
-                    onTap: () => _onTabSelected('Buy 1 Get 1'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildClickableDealCard(
-                    title: 'Flat 20% Off',
-                    subtitle: 'Cooking Oils & Tin Savers',
-                    imagePath: 'assets/images/sufioilCan.webp',
-                    badge: 'WEEKLY DEAL',
-                    onTap: () => _onTabSelected('Weekly Deals'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildClickableDealCard(
-                    title: 'Combo Savers',
-                    subtitle: 'Cheese & Beverage Deals',
-                    imagePath: 'assets/images/CheeseCategory.png',
-                    badge: 'COMBO DEAL',
-                    onTap: () => _onTabSelected('Combo Deals'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildClickableDealCard(
-                    title: 'Regular Deals',
-                    subtitle: 'Dry Fruits & Kitchen Stock',
-                    imagePath: 'assets/images/dryFruits.webp',
-                    badge: 'SPECIAL',
-                    onTap: () => _onTabSelected('Regular Deals'),
-                  ),
-                ),
-              ],
-            ),
-
             const SizedBox(height: 24),
 
-            // Live Promotional Products Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.shopping_bag_outlined, color: Color(0xFF25258F), size: 20),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Special Offer Products (${promoProducts.length})',
-                      style: const TextStyle(
-                        color: Color(0xFF2C3E50),
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+            // ── SECTION 1: WEEKLY DEALS ──
+            _buildSectionHeader(
+              title: 'Weekly Deals',
+              badge: 'LIMITED TIME',
+              badgeColor: const Color(0xFFFFE082),
+              onViewAll: () {
+                Get.to(() => const AllProductsView(
+                      initialCategory: 'Weekly Deals',
+                      pageTitle: 'Weekly Deals',
+                      onlyOnSale: true,
+                    ));
+              },
             ),
+            const SizedBox(height: 14),
+            _buildProductGrid(_weeklyDeals),
 
-            const SizedBox(height: 12),
+            const SizedBox(height: 32),
 
-            // Grid of Clickable Products with Add to Cart
-            promoProducts.isEmpty
-              ? Container(
-                  padding: const EdgeInsets.all(24),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.search_off, size: 40, color: Colors.grey),
-                      const SizedBox(height: 8),
-                      Text('No promotional items found in $_selectedTab.', style: TextStyle(color: Colors.grey.shade700)),
-                      TextButton(
-                        onPressed: () => _onTabSelected('All'),
-                        child: const Text('Show All Deals'),
-                      ),
-                    ],
-                  ),
-                )
-              : GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: promoProducts.length,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    childAspectRatio: 0.64,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                  ),
-                  itemBuilder: (context, index) {
-                    final item = promoProducts[index];
-                    return ProductCard(
-                      id: item['id']!,
-                      imagePath: item['imagePath']!,
-                      name: item['name']!,
-                      salePrice: item['salePrice'] as double,
-                      originalPrice: item['originalPrice'] as double,
-                      discountPercent: item['discountPercent'] as int,
-                      onAddToCart: () {
-                        final cartController = Get.isRegistered<CartController>()
-                            ? Get.find<CartController>()
-                            : Get.put(CartController());
-                        cartController.addToCart(
-                          item['id']!,
-                          item['imagePath']!,
-                          item['name']!,
-                          item['salePrice'] as double,
-                          1,
-                          originalPrice: item['originalPrice'] as double,
-                        );
-                      },
-                    );
-                  },
-                ),
+            // ── SECTION 2: REGULAR DEALS ──
+            _buildSectionHeader(
+              title: 'Regular Deals',
+              badge: 'EVERYDAY SAVERS',
+              badgeColor: const Color(0xFFC5CAE9),
+              onViewAll: () {
+                Get.to(() => const AllProductsView(
+                      initialCategory: 'Regular Deals',
+                      pageTitle: 'Regular Deals',
+                      onlyOnSale: true,
+                    ));
+              },
+            ),
+            const SizedBox(height: 14),
+            _buildProductGrid(_regularDeals),
+
             const SizedBox(height: 24),
           ],
         ),
@@ -575,91 +342,99 @@ class _PromotionsViewState extends State<PromotionsView> {
     );
   }
 
-  Widget _buildClickableDealCard({
+  Widget _buildSectionHeader({
     required String title,
-    required String subtitle,
-    required String imagePath,
     required String badge,
-    required VoidCallback onTap,
+    required Color badgeColor,
+    required VoidCallback onViewAll,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.shade200),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Row(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF25258F),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    badge,
-                    style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xFF25258F)),
-              ],
-            ),
-            const SizedBox(height: 8),
             Text(
               title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Color(0xFF1E293B), fontSize: 13, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 10),
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: Image.asset(
-                imagePath,
-                height: 70,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => const Icon(Icons.image, size: 60, color: Colors.grey),
+              style: const TextStyle(
+                color: Color(0xFF1E293B),
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(width: 8),
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFF8E1),
+                color: badgeColor,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFFFD54F)),
               ),
-              child: const Center(
-                child: Text(
-                  'Explore Offers',
-                  style: TextStyle(color: Color(0xFF25258F), fontSize: 11, fontWeight: FontWeight.bold),
+              child: Text(
+                badge,
+                style: const TextStyle(
+                  color: Color(0xFF25258F),
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ),
           ],
         ),
+        InkWell(
+          onTap: onViewAll,
+          child: const Row(
+            children: [
+              Text(
+                'View All',
+                style: TextStyle(
+                  color: Color(0xFF25258F),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              SizedBox(width: 4),
+              Icon(Icons.arrow_forward_ios, size: 12, color: Color(0xFF25258F)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProductGrid(List<Map<String, dynamic>> items) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.64,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
       ),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return ProductCard(
+          id: item['id']!,
+          imagePath: item['imagePath']!,
+          name: item['name']!,
+          salePrice: item['salePrice'] as double,
+          originalPrice: item['originalPrice'] as double,
+          discountPercent: item['discountPercent'] as int,
+          onAddToCart: () {
+            final cartController = Get.isRegistered<CartController>()
+                ? Get.find<CartController>()
+                : Get.put(CartController());
+            cartController.addToCart(
+              item['id']!,
+              item['imagePath']!,
+              item['name']!,
+              item['salePrice'] as double,
+              1,
+              originalPrice: item['originalPrice'] as double,
+            );
+          },
+        );
+      },
     );
   }
 }

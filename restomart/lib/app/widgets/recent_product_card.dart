@@ -28,10 +28,10 @@ class RecentProductCard extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: imagePath.isEmpty
-                ? const Icon(Icons.image_not_supported, color: Colors.grey)
+                ? Container(width: 140, height: 180, color: const Color(0xFFF7F8FC), child: Icon(Icons.inventory_2_outlined, color: const Color(0xFF25258F).withValues(alpha: 0.35), size: 36))
                 : imagePath.startsWith('http')
-                    ? Image.network(imagePath, width: 140, height: 180, fit: BoxFit.cover, errorBuilder: (_,__,___) => const Icon(Icons.broken_image))
-                    : Image.asset(imagePath, width: 140, height: 180, fit: BoxFit.cover, errorBuilder: (_,__,___) => const Icon(Icons.broken_image)),
+                    ? Image.network(imagePath, width: 140, height: 180, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(width: 140, height: 180, color: const Color(0xFFF7F8FC), child: Icon(Icons.inventory_2_outlined, color: const Color(0xFF25258F).withValues(alpha: 0.35), size: 36)))
+                    : Image.asset(imagePath, width: 140, height: 180, fit: BoxFit.cover, errorBuilder: (_,__,___) => Container(width: 140, height: 180, color: const Color(0xFFF7F8FC), child: Icon(Icons.inventory_2_outlined, color: const Color(0xFF25258F).withValues(alpha: 0.35), size: 36))),
           ),
           // Dark Gradient Overlay
           Container(

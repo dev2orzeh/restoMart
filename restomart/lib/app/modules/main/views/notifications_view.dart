@@ -4,8 +4,30 @@ import '../controllers/notifications_controller.dart';
 import '../../orders/views/orders_view.dart';
 import '../../ledger/views/ledger_view.dart';
 
-class NotificationsView extends StatelessWidget {
+/// Notifications screen.
+/// Marks all notifications as read when the screen is opened (via initState),
+/// ensuring the unread badge clears correctly without pre-clearing before the
+/// user can see them.
+class NotificationsView extends StatefulWidget {
   const NotificationsView({super.key});
+
+  @override
+  State<NotificationsView> createState() => _NotificationsViewState();
+}
+
+class _NotificationsViewState extends State<NotificationsView> {
+  @override
+  void initState() {
+    super.initState();
+    // Mark all as read after a brief delay so user sees the unread state first,
+    // then it transitions — and Firestore gets updated.
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) {
+        final controller = Get.find<NotificationsController>();
+        controller.markAllAsRead();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,9 +41,10 @@ class NotificationsView extends StatelessWidget {
         title: const Text(
           'Notifications',
           style: TextStyle(
-            color: Color(0xFF2C3E50),
-            fontWeight: FontWeight.bold,
-            fontSize: 22,
+            color: Color(0xFF25258F),
+            fontWeight: FontWeight.w800,
+            fontSize: 26,
+            letterSpacing: -0.5,
           ),
         ),
         actions: [
@@ -29,15 +52,6 @@ class NotificationsView extends StatelessWidget {
             if (controller.notifications.isEmpty) return const SizedBox.shrink();
             return Row(
               children: [
-                if (controller.unreadCount > 0)
-                  TextButton.icon(
-                    onPressed: controller.markAllAsRead,
-                    icon: const Icon(Icons.done_all, size: 16, color: Color(0xFF25258F)),
-                    label: const Text(
-                      'Read All',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF25258F)),
-                    ),
-                  ),
                 IconButton(
                   onPressed: controller.clearAll,
                   icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
@@ -58,7 +72,7 @@ class NotificationsView extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF25258F).withOpacity(0.06),
+                    color: const Color(0xFF25258F).withValues(alpha: 0.06),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
@@ -106,7 +120,8 @@ class NotificationsView extends StatelessWidget {
                   Get.to(() => const OrdersView());
                 }
               },
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -119,7 +134,7 @@ class NotificationsView extends StatelessWidget {
                   boxShadow: [
                     if (!isRead)
                       BoxShadow(
-                        color: const Color(0xFF25258F).withOpacity(0.08),
+                        color: const Color(0xFF25258F).withValues(alpha: 0.08),
                         blurRadius: 10,
                         offset: const Offset(0, 3),
                       ),
@@ -132,7 +147,7 @@ class NotificationsView extends StatelessWidget {
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: (notif['color'] as Color? ?? const Color(0xFF25258F)).withOpacity(0.15),
+                        color: (notif['color'] as Color? ?? const Color(0xFF25258F)).withValues(alpha: 0.15),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -189,7 +204,7 @@ class NotificationsView extends StatelessWidget {
                           width: 9,
                           height: 9,
                           decoration: const BoxDecoration(
-                            color: Color(0xFFE53935), // Red dot
+                            color: Color(0xFFFFC400), // Yellow dot
                             shape: BoxShape.circle,
                           ),
                         ),

@@ -22,6 +22,7 @@ import '../../../widgets/custom_text_field.dart';
 import '../../../widgets/primary_button.dart';
 import '../../../widgets/restomart_logo.dart';
 import '../../../widgets/social_login_button.dart';
+import '../../../widgets/google_logo.dart';
 import '../controllers/auth_controller.dart';
 
 class LoginScreen extends GetView<AuthController> {
@@ -155,16 +156,7 @@ class LoginScreen extends GetView<AuthController> {
                 // ── Google Sign In ────────────────────────────────
                 SocialLoginButton(
                   text: AppStrings.signInGoogle,
-                  icon: Image.network(
-                    'https://www.google.com/favicon.ico',
-                    width: 24,
-                    height: 24,
-                    errorBuilder: (_, __, ___) => const Icon(
-                      Icons.g_mobiledata,
-                      color: Colors.red,
-                      size: 28,
-                    ),
-                  ),
+                  icon: const GoogleLogo(size: 22),
                   onPressed: controller.signInWithGoogle,
                 ),
 

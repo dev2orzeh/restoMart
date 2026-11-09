@@ -246,8 +246,8 @@ class OrdersView extends StatelessWidget {
                   ],
                 ),
                 Obx(() {
-                  final statusStr = order.status.value.toLowerCase();
-                  final isCancelled = statusStr.contains('cancel');
+                  final statusStr = order.status.value.toLowerCase().trim();
+                  final isCancelled = statusStr.contains('cancel') || statusStr.contains('reject');
                   final isDelivered = statusStr.contains('deliver') || statusStr.contains('complet');
                   
                   return Wrap(
@@ -275,43 +275,45 @@ class OrdersView extends StatelessWidget {
                           minimumSize: const Size(0, 40),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      TextButton.icon(
-                        onPressed: isCancelled ? null : () async {
-                          Get.snackbar(
-                            'Generating Invoice',
-                            'Please wait while your PDF is being generated...',
-                            snackPosition: SnackPosition.BOTTOM,
-                            backgroundColor: Colors.blue.shade50,
-                            colorText: Colors.blue.shade800,
-                            icon: Icon(
-                              Icons.picture_as_pdf,
-                              color: Colors.blue.shade800,
-                            ),
-                            duration: const Duration(seconds: 2),
-                          );
+                      if (!isCancelled) ...[
+                        const SizedBox(width: 8),
+                        TextButton.icon(
+                          onPressed: () async {
+                            Get.snackbar(
+                              'Generating Invoice',
+                              'Please wait while your PDF is being generated...',
+                              snackPosition: SnackPosition.BOTTOM,
+                              backgroundColor: Colors.blue.shade50,
+                              colorText: Colors.blue.shade800,
+                              icon: Icon(
+                                Icons.picture_as_pdf,
+                                color: Colors.blue.shade800,
+                              ),
+                              duration: const Duration(seconds: 2),
+                            );
 
-                          // Generate and Download PDF
-                          await PdfInvoiceService.generateAndPrintInvoice(order);
-                        },
-                        icon: Icon(
-                          Icons.download,
-                          size: 16,
-                          color: isCancelled ? Colors.grey.shade400 : Colors.grey.shade700,
-                        ),
-                        label: Text(
-                          'Invoice',
-                          style: TextStyle(
-                            color: isCancelled ? Colors.grey.shade400 : Colors.grey.shade700,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
+                            // Generate and Download PDF
+                            await PdfInvoiceService.generateAndPrintInvoice(order);
+                          },
+                          icon: Icon(
+                            Icons.download,
+                            size: 16,
+                            color: Colors.grey.shade700,
+                          ),
+                          label: Text(
+                            'Invoice',
+                            style: TextStyle(
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            minimumSize: const Size(0, 40),
                           ),
                         ),
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: const Size(0, 40),
-                        ),
-                      ),
+                      ],
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
                         onPressed: () => controller.reorder(order),

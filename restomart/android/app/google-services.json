@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "883277273690-hs30la53e4djla6fnnjtmcrvjas8unal.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.restomart.restomart",
+            "certificate_hash": "17aefe430a006a1eaac67d4e7070d2fb118a7bdc"
+          }
+        },
+        {
+          "client_id": "883277273690-o33k4akgupbir8afuk21qounref77tp9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.restomart.restomart",
+            "certificate_hash": "0fc96fd3421991929053d6c255495d0455f0e0ec"
+          }
+        },
+        {
           "client_id": "883277273690-h8mdt5c7pescl1r7hgaj5m6jnot5u49p.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -29,6 +45,13 @@
             {
               "client_id": "883277273690-h8mdt5c7pescl1r7hgaj5m6jnot5u49p.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "883277273690-9vcl17qtsmhsgkmteq4q9re13o1bfjol.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.restomart.restomart"
+              }
             }
           ]
         }

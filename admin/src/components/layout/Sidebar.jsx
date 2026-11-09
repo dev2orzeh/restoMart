@@ -11,7 +11,8 @@ import {
   HelpCircle,
   LogOut,
   ShoppingCart,
-  BookOpen
+  BookOpen,
+  Image
 } from 'lucide-react';
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { to: '/ledger', icon: BookOpen, label: 'Ledger' },
   { to: '/invoices', icon: Receipt, label: 'Invoices' },
   { to: '/customers', icon: Users, label: 'Customers' },
+  { to: '/banners', icon: Image, label: 'Banners' },
 ];
 
 const bottomItems = [

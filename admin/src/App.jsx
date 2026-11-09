@@ -11,6 +11,7 @@ import Customers from './pages/Customers';
 import Settings from './pages/Settings';
 import HelpCenter from './pages/HelpCenter';
 import Ledger from './pages/Ledger';
+import Banners from './pages/Banners';
 import Login from './pages/Login';
 
 // Mock Protected Route component
@@ -57,6 +58,7 @@ function App() {
           <Route path="/invoices" element={<Invoices />} />
           <Route path="/customers" element={<Customers />} />
           <Route path="/ledger" element={<Ledger />} />
+          <Route path="/banners" element={<Banners />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/help" element={<HelpCenter />} />
         </Route>

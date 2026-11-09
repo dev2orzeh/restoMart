@@ -654,46 +654,4 @@ class _ProductDetailsViewState extends State<ProductDetailsView> {
       ),
     );
   }
-
-  Widget _buildFavoriteBtn() {
-    return Obx(() {
-      final favoritesController = Get.isRegistered<FavoritesController>() 
-          ? Get.find<FavoritesController>() 
-          : Get.put(FavoritesController());
-      
-      final isFav = favoritesController.isFavorite(widget.name);
-      
-      return InkWell(
-        onTap: () {
-          favoritesController.toggleFavorite(
-            id: widget.id,
-            imagePath: widget.imagePath,
-            name: widget.name,
-            salePrice: widget.salePrice,
-            originalPrice: widget.originalPrice,
-            discountPercent: 0, // Since we don't pass discount to details view currently
-          );
-        },
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black12,
-                blurRadius: 8,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Icon(
-            isFav ? Icons.favorite : Icons.favorite_border, 
-            color: isFav ? const Color(0xFFE53E3E) : AppColors.textPrimary, 
-            size: 22,
-          ),
-        ),
-      );
-    });
-  }
 }

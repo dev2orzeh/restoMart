@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../controllers/main_controller.dart';
 import 'all_products_view.dart';
 
 class CategoriesView extends StatefulWidget {
@@ -33,6 +34,22 @@ class _CategoriesViewState extends State<CategoriesView> {
   // ============================================================
 
   final List<Map<String, dynamic>> _categories = [
+    {
+      'title': 'Rice',
+      'subtitle': 'Basmati, steam & sella rice',
+      'image': 'assets/images/RestoMart_All_Category_Images_430x430/Rice.png',
+      'bgColor': const Color(0xFFFFF8E1),
+      'targetCategory': 'Rice',
+      'isFullImage': true,
+    },
+    {
+      'title': 'Flour',
+      'subtitle': 'Corn flour, maida & wheat flour',
+      'image': 'assets/images/RestoMart_All_Category_Images_430x430/Flour.png',
+      'bgColor': const Color(0xFFEEF7FF),
+      'targetCategory': 'Flour',
+      'isFullImage': true,
+    },
     {
       'title': 'Cheese',
       'subtitle': 'Fresh & premium cheese',
@@ -247,102 +264,76 @@ class _CategoriesViewState extends State<CategoriesView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: pageBackground,
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        top: false,
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Top Header: Back Button & "Shop Categories" ──
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: Row(
+                      children: [
+                        InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            if (Navigator.canPop(context)) {
+                              Navigator.pop(context);
+                            } else if (Get.isRegistered<MainController>()) {
+                              Get.find<MainController>().changeTab(2);
+                            }
+                          },
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F5FA),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              size: 16,
+                              color: Color(0xFF1B1B3A),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Text(
+                          'Shop Categories',
+                          style: TextStyle(
+                            color: Color(0xFF1B1B3A),
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.4,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
-      // ========================================================
-      // APP BAR
-      // ========================================================
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        centerTitle: true,
-
-        leading: IconButton(
-          onPressed: () {
-            Get.back();
-          },
-          icon: Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: pageBackground,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new_rounded,
-              size: 17,
-              color: primaryBlue,
-            ),
-          ),
-        ),
-
-        title: const Text(
-          'Categories',
-          style: TextStyle(
-            color: primaryBlue,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-
-      // ========================================================
-      // BODY
-      // ========================================================
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          // ====================================================
-          // COLLAPSING HEADER (Search & Title)
-          // ====================================================
-          SliverAppBar(
-            backgroundColor: Colors.white,
-            pinned: false, // Allows it to scroll completely out of view for max screen space
-            floating: true,
-            snap: true,
-            elevation: 0,
-            expandedHeight: 200,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                width: double.infinity,
-                color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // ------------------------------------------------
-                    // MAIN HEADING
-                    // ------------------------------------------------
-                    const Text(
-                      'Kitchen Essentials',
-                      style: TextStyle(
-                        color: darkText,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
+                  // ── Categories Header Banner Asset ──
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset(
+                        'assets/images/categories_header.jpeg',
+                        width: double.infinity,
+                        fit: BoxFit.contain,
                       ),
                     ),
+                  ),
 
-                    const SizedBox(height: 5),
-
-                    const Text(
-                      'Everything your restaurant needs',
-                      style: TextStyle(
-                        color: secondaryText,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w400,
-                      ),
-                    ),
-
-                    const SizedBox(height: 20),
-
-                    // ------------------------------------------------
-                    // SEARCH BAR
-                    // ------------------------------------------------
-                    Container(
-                      height: 54,
+                  // ── Search Bar ──
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 2, 16, 14),
+                    child: Container(
+                      height: 52,
                       decoration: BoxDecoration(
                         color: pageBackground,
                         borderRadius: BorderRadius.circular(16),
@@ -353,41 +344,32 @@ class _CategoriesViewState extends State<CategoriesView> {
                       ),
                       child: TextField(
                         controller: _searchController,
-
-                        // Search happens here
                         onChanged: (value) {
                           setState(() {
                             _searchQuery = value;
                           });
                         },
-
                         style: const TextStyle(
                           color: darkText,
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
                         ),
-
                         decoration: InputDecoration(
                           hintText: 'Search categories...',
-
                           hintStyle: const TextStyle(
                             color: Color(0xFF9CA3AF),
                             fontSize: 14,
                             fontWeight: FontWeight.w400,
                           ),
-
                           prefixIcon: const Icon(
                             Icons.search_rounded,
                             color: primaryBlue,
-                            size: 23,
+                            size: 22,
                           ),
-
-                          // X button appears when user types
                           suffixIcon: _searchQuery.isNotEmpty
                               ? IconButton(
                                   onPressed: () {
                                     _searchController.clear();
-
                                     setState(() {
                                       _searchQuery = '';
                                     });
@@ -395,83 +377,74 @@ class _CategoriesViewState extends State<CategoriesView> {
                                   icon: const Icon(
                                     Icons.close_rounded,
                                     color: secondaryText,
-                                    size: 20,
+                                    size: 18,
                                   ),
                                 )
                               : null,
-
                           border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                          contentPadding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // ====================================================
-          // SHOP BY CATEGORY TITLE
-          // ====================================================
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
-              child: Row(
-                children: [
-                  const Text(
-                    'Shop by Category',
-                    style: TextStyle(
-                      color: primaryBlue,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                    ),
                   ),
 
-                  const Spacer(),
-
-                  Text(
-                    '${_filteredCategories.length} categories',
-                    style: const TextStyle(
-                      color: secondaryText,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                  // ── Section Title: Shop by Category ──
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Shop by Category',
+                          style: TextStyle(
+                            color: primaryBlue,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          '${_filteredCategories.length} categories',
+                          style: const TextStyle(
+                            color: secondaryText,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
-          ),
 
-          // ====================================================
-          // CATEGORY GRID
-          // ====================================================
-          if (_filteredCategories.isEmpty)
-            SliverFillRemaining(
-              child: _buildEmptySearch(),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
-              sliver: SliverGrid(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 14,
-                  mainAxisSpacing: 14,
-                  childAspectRatio: 0.95, // Reverted to original height
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final category = _filteredCategories[index];
-                    return _buildCategoryCard(category);
-                  },
-                  childCount: _filteredCategories.length,
+            // ====================================================
+            // CATEGORY GRID
+            // ====================================================
+            if (_filteredCategories.isEmpty)
+              SliverFillRemaining(
+                child: _buildEmptySearch(),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 14,
+                    mainAxisSpacing: 14,
+                    childAspectRatio: 0.95,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final category = _filteredCategories[index];
+                      return _buildCategoryCard(category);
+                    },
+                    childCount: _filteredCategories.length,
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -483,30 +456,21 @@ class _CategoriesViewState extends State<CategoriesView> {
   Widget _buildCategoryCard(Map<String, dynamic> category) {
     return Material(
       color: Colors.transparent,
-
       child: InkWell(
         borderRadius: BorderRadius.circular(20),
-
-        // ======================================================
-        // CATEGORY CLICK
-        // ======================================================
         onTap: () {
           final targetCategory = category['targetCategory'] ?? category['title'];
           debugPrint('Selected category: $targetCategory');
           Get.to(() => AllProductsView(initialCategory: targetCategory as String));
         },
-
         child: Ink(
           decoration: BoxDecoration(
-            color: category['bgColor'] as Color,
-
+            color: category['bgColor'] as Color? ?? Colors.white,
             borderRadius: BorderRadius.circular(20),
-
             border: Border.all(
-              color: Colors.black.withOpacity(0.035),
+              color: Colors.black.withOpacity(0.04),
               width: 1,
             ),
-
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withOpacity(0.035),
@@ -516,113 +480,23 @@ class _CategoriesViewState extends State<CategoriesView> {
               ),
             ],
           ),
-
-          child: category['isFullImage'] == true 
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: (category['image'] as String).startsWith('http')
-                  ? Image.network(category['image'] as String, fit: BoxFit.cover)
-                  : Image.asset(category['image'] as String, fit: BoxFit.cover),
-              )
-            : Padding(
-            padding: const EdgeInsets.all(14),
-
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // =================================================
-                // IMAGE AREA
-                // =================================================
-                Expanded(
-                  child: Stack(
-                    children: [
-                      // Product/category image
-                      Positioned.fill(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 2),
-                          child: (category['image'] as String).isEmpty
-                              ? const Center(child: Icon(Icons.inventory_2_outlined, color: secondaryText, size: 45))
-                              : (category['image'] as String).startsWith('http')
-                                  ? Image.network(category['image'] as String, fit: BoxFit.contain, errorBuilder: (_,__,___) => const Center(child: Icon(Icons.inventory_2_outlined, color: secondaryText, size: 45)))
-                                  : Image.asset(category['image'] as String, fit: BoxFit.contain, color: category['bgColor'] as Color, colorBlendMode: BlendMode.multiply, errorBuilder: (_,__,___) => const Center(child: Icon(Icons.inventory_2_outlined, color: secondaryText, size: 45))),
-                        ),
-                      ),
-
-                      // =================================================
-                      // ARROW BUTTON
-                      // =================================================
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: Container(
-                          width: 32,
-                          height: 32,
-
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.90),
-                            shape: BoxShape.circle,
-
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.04),
-                                blurRadius: 5,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-
-                          child: const Icon(
-                            Icons.arrow_forward_rounded,
-                            color: primaryBlue,
-                            size: 16,
-                          ),
-                        ),
-                      ),
-                    ],
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: (category['image'] as String).startsWith('http')
+                ? Image.network(
+                    category['image'] as String,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Center(
+                      child: Icon(Icons.inventory_2_outlined, color: secondaryText, size: 45),
+                    ),
+                  )
+                : Image.asset(
+                    category['image'] as String,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Center(
+                      child: Icon(Icons.inventory_2_outlined, color: secondaryText, size: 45),
+                    ),
                   ),
-                ),
-
-                const SizedBox(height: 10),
-
-                // =================================================
-                // CATEGORY TITLE
-                // =================================================
-                Text(
-                  category['title'] as String,
-
-                  maxLines: 1,
-
-                  overflow: TextOverflow.ellipsis,
-
-                  style: const TextStyle(
-                    color: darkText,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    height: 1.2,
-                  ),
-                ),
-
-                const SizedBox(height: 5),
-
-                // =================================================
-                // CATEGORY SUBTITLE
-                // =================================================
-                Text(
-                  category['subtitle'] as String,
-
-                  maxLines: 1,
-
-                  overflow: TextOverflow.ellipsis,
-
-                  style: const TextStyle(
-                    color: secondaryText,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w400,
-                    height: 1.3,
-                  ),
-                ),
-              ],
-            ),
           ),
         ),
       ),

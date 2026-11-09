@@ -64,36 +64,18 @@ class OrderTrackingView extends StatelessWidget {
                     style: TextStyle(color: Colors.grey.shade700, fontSize: 16),
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            Get.snackbar(
-                              'Generating Invoice',
-                              'Please wait while your PDF is being generated...',
-                              snackPosition: SnackPosition.BOTTOM,
-                              backgroundColor: Colors.blue.shade50,
-                              colorText: Colors.blue.shade800,
-                              icon: Icon(Icons.picture_as_pdf, color: Colors.blue.shade800),
-                              duration: const Duration(seconds: 2),
-                            );
-                            await PdfInvoiceService.generateAndPrintInvoice(order);
-                          },
-                          icon: const Icon(Icons.download, size: 18),
-                          label: const Text('Invoice'),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(0, 48),
-                            foregroundColor: AppColors.primary,
-                            side: const BorderSide(color: AppColors.primary),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
+                  Obx(() {
+                    final cleanTargetId = order.id.replaceAll('#', '').trim();
+                    final liveOrder = Get.find<OrdersController>().orders.firstWhere(
+                      (o) => o.id.replaceAll('#', '').trim() == cleanTargetId,
+                      orElse: () => order,
+                    );
+                    final isCancelled = liveOrder.status.value.toLowerCase().contains('cancel') ||
+                        liveOrder.status.value.toLowerCase().contains('reject');
+
+                    if (isCancelled) {
+                      return SizedBox(
+                        width: double.infinity,
                         child: ElevatedButton.icon(
                           onPressed: () {
                             if (Get.isRegistered<OrdersController>()) {
@@ -111,9 +93,60 @@ class OrderTrackingView extends StatelessWidget {
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              Get.snackbar(
+                                'Generating Invoice',
+                                'Please wait while your PDF is being generated...',
+                                snackPosition: SnackPosition.BOTTOM,
+                                backgroundColor: Colors.blue.shade50,
+                                colorText: Colors.blue.shade800,
+                                icon: Icon(Icons.picture_as_pdf, color: Colors.blue.shade800),
+                                duration: const Duration(seconds: 2),
+                              );
+                              await PdfInvoiceService.generateAndPrintInvoice(order);
+                            },
+                            icon: const Icon(Icons.download, size: 18),
+                            label: const Text('Invoice'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 48),
+                              foregroundColor: AppColors.primary,
+                              side: const BorderSide(color: AppColors.primary),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              if (Get.isRegistered<OrdersController>()) {
+                                Get.find<OrdersController>().reorder(order);
+                              }
+                            },
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('Reorder'),
+                            style: ElevatedButton.styleFrom(
+                              minimumSize: const Size(0, 48),
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
                 ],
               ),
             ),
@@ -135,8 +168,9 @@ class OrderTrackingView extends StatelessWidget {
                 ],
               ),
               child: Obx(() {
+                final cleanTargetId = order.id.replaceAll('#', '').trim();
                 final liveOrder = Get.find<OrdersController>().orders.firstWhere(
-                  (o) => o.id == order.id,
+                  (o) => o.id.replaceAll('#', '').trim() == cleanTargetId,
                   orElse: () => order,
                 );
                 
@@ -341,21 +375,12 @@ class OrderTrackingView extends StatelessWidget {
   }
 
   Widget _buildTrackingTimeline(String currentStatus) {
-    // Basic mapping for visual timeline
-    int currentStep = 0;
-    String status = currentStatus.toLowerCase();
-    if (status.contains('processing') || status.contains('accepted')) {
-      currentStep = 1;
-    } else if (status.contains('shipped') || status.contains('way')) {
-      currentStep = 2;
-    } else if (status.contains('delivered') || status.contains('completed')) {
-      currentStep = 3;
-    }
+    // 2-step simplified lifecycle: Pending -> Delivered
+    final isDelivered = currentStatus.toLowerCase().contains('deliver') || currentStatus.toLowerCase().contains('complet');
+    final int currentStep = isDelivered ? 1 : 0;
 
     final steps = [
-      {'title': 'Order Placed', 'icon': Icons.inventory_2_outlined},
-      {'title': 'Processing', 'icon': Icons.access_time},
-      {'title': 'Shipped', 'icon': Icons.local_shipping_outlined},
+      {'title': 'Pending (Submitted)', 'icon': Icons.inventory_2_outlined},
       {'title': 'Delivered', 'icon': Icons.check_circle_outline},
     ];
 

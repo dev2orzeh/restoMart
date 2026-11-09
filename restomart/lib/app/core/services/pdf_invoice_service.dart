@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../modules/orders/controllers/orders_controller.dart';
@@ -395,9 +394,12 @@ class PdfInvoiceService {
     double balance,
     List<Map<String, dynamic>> transactions,
   ) async {
-    final ByteData bytes = await rootBundle.load('assets/images/homePageLogo.webp');
-    final Uint8List logoBytes = bytes.buffer.asUint8List();
-    final logoImage = pw.MemoryImage(logoBytes);
+    pw.MemoryImage? logoImage;
+    try {
+      final ByteData bytes = await rootBundle.load('assets/images/homePageLogo.webp');
+      final Uint8List logoBytes = bytes.buffer.asUint8List();
+      logoImage = pw.MemoryImage(logoBytes);
+    } catch (_) {}
 
     final pdf = pw.Document();
 
@@ -413,7 +415,10 @@ class PdfInvoiceService {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Image(logoImage, width: 140),
+                    if (logoImage != null)
+                      pw.Image(logoImage, width: 140)
+                    else
+                      pw.Text('RestoMart', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
                     pw.SizedBox(height: 8),
                     pw.Text('Lahore, Pakistan'),
                     pw.Text('support@restomart.com'),
@@ -449,7 +454,7 @@ class PdfInvoiceService {
                       pw.SizedBox(height: 4),
                       pw.Text(customerName, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16)),
                       pw.Text(customerEmail),
-                      pw.Text(customerPhone),
+                      if (customerPhone.isNotEmpty) pw.Text(customerPhone),
                     ]
                   ),
                   pw.Column(
@@ -486,38 +491,43 @@ class PdfInvoiceService {
             pw.SizedBox(height: 10),
             
             // Items
-            ...transactions.map((txn) {
-              final isDebit = txn['type'] == 'debit';
-              final amount = (txn['amount'] ?? 0.0) as double;
-              String dateStr = '';
-              if (txn['date'] != null) {
-                // Since this might run on client, we expect DateTime or Timestamp. 
-                // Assumes we format it in the View before passing.
-                dateStr = txn['date'].toString(); 
-              }
-              
-              return pw.Container(
-                decoration: const pw.BoxDecoration(
-                  border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200, width: 1))
-                ),
-                padding: const pw.EdgeInsets.symmetric(vertical: 6),
-                child: pw.Row(
-                  children: [
-                    pw.Expanded(flex: 2, child: pw.Text(dateStr, style: const pw.TextStyle(fontSize: 10))),
-                    pw.Expanded(flex: 4, child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text(txn['description'] ?? '', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
-                        if (txn['paymentMethod'] != null)
-                          pw.Text(txn['paymentMethod'].toString().toUpperCase(), style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
-                      ]
-                    )),
-                    pw.Expanded(flex: 2, child: pw.Text(isDebit ? 'Rs ${amount.toStringAsFixed(2)}' : '-', textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 11))),
-                    pw.Expanded(flex: 2, child: pw.Text(!isDebit ? 'Rs ${amount.toStringAsFixed(2)}' : '-', textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 11, color: PdfColors.green700))),
-                  ]
-                )
-              );
-            }),
+            if (transactions.isEmpty)
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(vertical: 24),
+                alignment: pw.Alignment.center,
+                child: pw.Text('No transactions recorded yet.', style: const pw.TextStyle(color: PdfColors.grey600)),
+              )
+            else
+              ...transactions.map((txn) {
+                final isDebit = txn['type'] == 'debit';
+                final amount = ((txn['amount'] as num?)?.toDouble() ?? 0.0);
+                String dateStr = '';
+                if (txn['date'] != null) {
+                  dateStr = txn['date'].toString(); 
+                }
+                
+                return pw.Container(
+                  decoration: const pw.BoxDecoration(
+                    border: pw.Border(bottom: pw.BorderSide(color: PdfColors.grey200, width: 1))
+                  ),
+                  padding: const pw.EdgeInsets.symmetric(vertical: 6),
+                  child: pw.Row(
+                    children: [
+                      pw.Expanded(flex: 2, child: pw.Text(dateStr, style: const pw.TextStyle(fontSize: 10))),
+                      pw.Expanded(flex: 4, child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(txn['description'] ?? '', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 11)),
+                          if (txn['paymentMethod'] != null)
+                            pw.Text(txn['paymentMethod'].toString().toUpperCase(), style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+                        ]
+                      )),
+                      pw.Expanded(flex: 2, child: pw.Text(isDebit ? 'Rs ${amount.toStringAsFixed(2)}' : '-', textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 11))),
+                      pw.Expanded(flex: 2, child: pw.Text(!isDebit ? 'Rs ${amount.toStringAsFixed(2)}' : '-', textAlign: pw.TextAlign.right, style: const pw.TextStyle(fontSize: 11, color: PdfColors.green700))),
+                    ]
+                  )
+                );
+              }),
             
             pw.SizedBox(height: 30),
             pw.Center(

@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, onSnapshot, doc, updateDoc, query, orderBy, runTransaction, serverTimestamp, getDocs, setDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, updateDoc, query, orderBy, runTransaction, serverTimestamp, getDocs, setDoc, deleteDoc, getDoc, addDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: "AIzaSyCWg-_YHLqGPzNBhR7ovpAYZKRxeWTFsfw",
@@ -38,7 +38,47 @@ export const subscribeToOrders = (callback) => {
 // Helper to update an order's status
 export const updateOrderStatus = async (orderId, newStatus) => {
   const orderRef = doc(db, 'orders', orderId);
-  await updateDoc(orderRef, { status: newStatus });
+  await updateDoc(orderRef, { 
+    status: newStatus,
+    updatedAt: serverTimestamp() 
+  });
+
+  try {
+    const orderSnap = await getDoc(orderRef);
+    if (orderSnap.exists()) {
+      const orderData = orderSnap.data();
+      const userId = orderData.userId;
+      if (userId) {
+        let title = 'Order Update';
+        let description = `Your order #${orderId} is now ${newStatus}.`;
+        const stLower = (newStatus || '').toLowerCase();
+        if (stLower === 'shipped') {
+          title = 'Order Shipped! 🚚';
+          description = `Your order #${orderId} is on its way.`;
+        } else if (stLower === 'delivered' || stLower === 'completed') {
+          title = 'Order Delivered! ✅';
+          description = `Your order #${orderId} has been delivered. Enjoy!`;
+        } else if (stLower === 'cancelled') {
+          title = 'Order Cancelled ❌';
+          description = `Your order #${orderId} has been cancelled.`;
+        }
+
+        await addDoc(collection(db, 'users', userId, 'notifications'), {
+          title,
+          description,
+          action: 'order_view',
+          type: 'order_status',
+          isRead: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+    }
+    if ((newStatus || '').toLowerCase().includes('cancel')) {
+      await syncLedgerAccountsWithOrders();
+    }
+  } catch (err) {
+    console.error("Error creating user notification in Firestore:", err);
+  }
 };
 
 // ── Ledger Specific Functions ──
@@ -53,27 +93,23 @@ export const syncLedgerAccountsWithOrders = async () => {
 
     const accountMap = {};
     allAccounts.forEach(acc => {
-      accountMap[acc.id] = acc;
+      if (acc.id) accountMap[acc.id] = acc;
       if (acc.customerEmail) accountMap[acc.customerEmail.toLowerCase().trim()] = acc;
-      if (acc.customerPhone) accountMap[acc.customerPhone.trim()] = acc;
     });
 
     const customerOrders = {};
     allOrders.forEach(order => {
       const status = (order.status || '').toLowerCase().trim();
-      if (status === 'cancelled') return;
+      if (status.includes('cancel') || status.includes('reject')) return;
 
       const uid = order.userId;
       const email = (order.email || order.billing?.email || '').toLowerCase().trim();
-      const phone = (order.phone || order.billing?.phone || '').trim();
 
       let targetAccountId = null;
       if (uid && accountMap[uid]) {
         targetAccountId = accountMap[uid].id;
-      } else if (email && accountMap[email]) {
+      } else if (!uid && email && accountMap[email]) {
         targetAccountId = accountMap[email].id;
-      } else if (phone && accountMap[phone]) {
-        targetAccountId = accountMap[phone].id;
       }
 
       if (targetAccountId) {
@@ -82,6 +118,7 @@ export const syncLedgerAccountsWithOrders = async () => {
         }
         customerOrders[targetAccountId].push({
           id: order.id,
+          cleanId: order.id.toString().replaceAll('#', '').trim(),
           total: parseFloat(order.total) || 0,
           payment: order.payment || order.paymentMethod || 'Cash on delivery',
           date: order.date
@@ -92,6 +129,7 @@ export const syncLedgerAccountsWithOrders = async () => {
     for (const accDoc of accountsSnap.docs) {
       const accId = accDoc.id;
       const validOrders = customerOrders[accId] || [];
+      const validOrderIds = new Set(validOrders.map(o => o.cleanId));
 
       // 1. Fetch all transactions for this account
       const txSnap = await getDocs(collection(db, 'ledger_accounts', accId, 'transactions'));
@@ -106,7 +144,7 @@ export const syncLedgerAccountsWithOrders = async () => {
         const desc = (data.description || '').toString();
 
         // Remove legacy order cancellation reversals so Total Paid (Credit) isn't artificially inflated
-        if (pMethod === 'system_reversal' || desc.includes('Reversal for Cancelled Order')) {
+        if (pMethod === 'system_reversal' || desc.includes('Reversal for Cancelled Order') || desc.toLowerCase().includes('cancel')) {
           docsToDelete.push(txDoc.ref);
           continue;
         }
@@ -120,14 +158,10 @@ export const syncLedgerAccountsWithOrders = async () => {
         if (data.type === 'debit') {
           const rawOId = (data.orderId || desc || '').toString().replaceAll('#', '').replace('Order', '').trim();
           
-          // Check if order is cancelled
-          const matchingOrder = allOrders.find(o => o.id.toString().trim() === rawOId);
-          const isCancelled = matchingOrder && (matchingOrder.status || '').toLowerCase() === 'cancelled';
-
-          if (isCancelled) {
+          // If this order does not belong to this account's valid active orders, or is duplicate, delete it!
+          if (!validOrderIds.has(rawOId)) {
             docsToDelete.push(txDoc.ref);
           } else if (seenOrderDebits.has(rawOId)) {
-            // Duplicate debit found
             docsToDelete.push(txDoc.ref);
           } else {
             seenOrderDebits.set(rawOId, txDoc.id);
@@ -158,9 +192,9 @@ export const syncLedgerAccountsWithOrders = async () => {
 
       // 3. Ensure active non-cancelled orders have a debit transaction
       for (const ord of validOrders) {
-        const cleanOrdId = ord.id.toString().trim();
+        const cleanOrdId = ord.cleanId;
         if (!seenOrderDebits.has(cleanOrdId)) {
-          const cleanDocId = `debit_${cleanOrdId.replaceAll('#', '')}`;
+          const cleanDocId = `debit_${cleanOrdId}`;
           const newTxRef = doc(db, 'ledger_accounts', accId, 'transactions', cleanDocId);
           await setDoc(newTxRef, {
             type: 'debit',
@@ -199,7 +233,59 @@ export const fetchLedgerTransactions = async (uid) => {
   const txRef = collection(db, 'ledger_accounts', uid, 'transactions');
   const q = query(txRef, orderBy('date', 'desc'));
   const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Retrieve this account's details to know their customerEmail
+  const accSnap = await getDoc(doc(db, 'ledger_accounts', uid));
+  const accData = accSnap.exists() ? accSnap.data() : {};
+  const accEmail = (accData.customerEmail || '').toLowerCase().trim();
+
+  // Retrieve orders to find cancelled orders and verify which orders strictly belong to this account
+  const ordersSnap = await getDocs(collection(db, 'orders'));
+  const cancelledIds = new Set();
+  const validOrderIds = new Set();
+
+  ordersSnap.forEach((d) => {
+    const data = d.data();
+    const st = (data.status || '').toLowerCase().trim();
+    const cleanId = d.id.toString().replaceAll('#', '').trim();
+
+    if (st.includes('cancel') || st.includes('reject')) {
+      cancelledIds.add(cleanId);
+      cancelledIds.add(d.id.toString().trim());
+      return;
+    }
+
+    const oUid = (data.userId || data.uid || '').toString().trim();
+    const oEmail = (data.email || data.billing?.email || '').toString().toLowerCase().trim();
+
+    // An order only belongs to this user if it matches UID, or (if guest) matches exact email
+    if ((oUid && oUid === uid) || (!oUid && accEmail && oEmail === accEmail)) {
+      validOrderIds.add(cleanId);
+      validOrderIds.add(d.id.toString().trim());
+    }
+  });
+
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(txn => {
+      const pMethod = (txn.paymentMethod || '').toString().toLowerCase();
+      const desc = (txn.description || '').toString();
+      const oId = (txn.orderId || desc).toString().replaceAll('#', '').replace('Order', '').trim();
+
+      if (pMethod === 'system_reversal' || desc.includes('Reversal for Cancelled Order') || desc.toLowerCase().includes('cancel')) {
+        return false;
+      }
+      if (cancelledIds.has(oId) || (txn.orderId && cancelledIds.has(txn.orderId.toString().trim()))) {
+        return false;
+      }
+
+      // If this is a debit transaction, ensure it belongs to this user's valid orders
+      if (txn.type === 'debit' && validOrderIds.size > 0 && !validOrderIds.has(oId) && (!txn.orderId || !validOrderIds.has(txn.orderId.toString().trim()))) {
+        return false;
+      }
+
+      return true;
+    });
 };
 
 export const recordLedgerPayment = async (uid, amount, paymentMethod, note, orderId = null) => {
@@ -264,6 +350,18 @@ export const recordLedgerPayment = async (uid, amount, paymentMethod, note, orde
 export const subscribeToAllTransactions = (callback) => {
   const qAccounts = collection(db, 'ledger_accounts');
   return onSnapshot(qAccounts, async (snapshot) => {
+    // Get cancelled orders set
+    const ordersSnap = await getDocs(collection(db, 'orders'));
+    const cancelledIds = new Set();
+    ordersSnap.forEach((d) => {
+      const data = d.data();
+      const st = (data.status || '').toLowerCase().trim();
+      if (st.includes('cancel') || st.includes('reject')) {
+        cancelledIds.add(d.id.toString().replaceAll('#', '').trim());
+        cancelledIds.add(d.id.toString().trim());
+      }
+    });
+
     const allTxns = [];
     for (const userDoc of snapshot.docs) {
       const userData = userDoc.data();
@@ -271,6 +369,17 @@ export const subscribeToAllTransactions = (callback) => {
         const txSnap = await getDocs(query(collection(db, 'ledger_accounts', userDoc.id, 'transactions'), orderBy('date', 'desc')));
         txSnap.forEach((txDoc) => {
           const tx = txDoc.data();
+          const pMethod = (tx.paymentMethod || '').toString().toLowerCase();
+          const desc = (tx.description || '').toString();
+          const oId = (tx.orderId || desc).toString().replaceAll('#', '').replace('Order', '').trim();
+
+          if (pMethod === 'system_reversal' || desc.includes('Reversal for Cancelled Order') || desc.toLowerCase().includes('cancel')) {
+            return;
+          }
+          if (cancelledIds.has(oId) || (tx.orderId && cancelledIds.has(tx.orderId.toString().trim()))) {
+            return;
+          }
+
           let formattedDate = 'N/A';
           if (tx.date) {
             try {

@@ -1,16 +1,24 @@
-import { useState, useEffect } from 'react';
-import { FileText, Download, Eye, Search } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { FileText, Download, Eye, Search, X } from 'lucide-react';
 import Modal from '../components/shared/Modal';
 import InvoiceTemplate from '../components/shared/InvoiceTemplate';
 import Loader from '../components/shared/Loader';
 import { subscribeToOrders, subscribeToLedgerAccounts } from '../services/firebase';
 
 export default function Invoices() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlQ = searchParams.get('q') || '';
+  const [searchQuery, setSearchQuery] = useState(urlQ);
   const [ordersData, setOrdersData] = useState([]);
   const [ledgerAccounts, setLedgerAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
   const [invoiceOrder, setInvoiceOrder] = useState(null);
+
+  useEffect(() => {
+    const qParam = searchParams.get('q') || '';
+    setSearchQuery(qParam);
+  }, [searchParams]);
 
   useEffect(() => {
     const unsubscribeOrders = subscribeToOrders((firebaseOrders) => {
@@ -28,28 +36,59 @@ export default function Invoices() {
     };
   }, []);
 
-  const invoices = ordersData.map((order) => ({
-    id: `INV-${order.id.replace(/^RM-/, '')}`,
-    orderId: order.id,
-    customer: order.customer || 'Customer',
-    email: order.email || 'N/A',
-    date: order.date || 'N/A',
-    amount: parseFloat(order.total || 0),
-    itemsCount: Array.isArray(order.items) ? order.items.length : 1,
-    status: order.status || 'pending',
-    fullOrder: order,
-  }));
+  const handleSearchChange = (val) => {
+    setSearchQuery(val);
+    if (val.trim()) {
+      setSearchParams({ q: val }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
 
-  const filteredInvoices = invoices.filter((inv) => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      inv.id.toLowerCase().includes(q) ||
-      inv.orderId.toLowerCase().includes(q) ||
-      inv.customer.toLowerCase().includes(q) ||
-      inv.email.toLowerCase().includes(q)
-    );
-  });
+  const invoices = useMemo(() => {
+    return ordersData
+      .filter((order) => {
+        const st = (order.status || '').toLowerCase().trim();
+        return !st.includes('cancel') && !st.includes('reject');
+      })
+      .map((order) => ({
+        id: `INV-${String(order.id || '').replace(/^RM-/, '')}`,
+        orderId: order.id,
+        customer: order.customer || 'Customer',
+        email: order.email || 'N/A',
+        date: order.date || 'N/A',
+        amount: parseFloat(order.total || 0),
+        itemsCount: Array.isArray(order.items) ? order.items.length : 1,
+        status: order.status || 'pending',
+        fullOrder: order,
+      }));
+  }, [ordersData]);
+
+  const filteredInvoices = useMemo(() => {
+    if (!searchQuery || !searchQuery.trim()) return invoices;
+    const q = searchQuery.toLowerCase().trim();
+    const cleanQ = q.replace(/^rm-?/i, '').replace(/^#/i, '').replace(/^inv-?/i, '').trim();
+
+    return invoices.filter((inv) => {
+      const id = String(inv.id || '').toLowerCase();
+      const cleanInvId = id.replace(/^inv-?/i, '').replace(/^rm-?/i, '').replace(/^#/i, '').trim();
+      const orderId = String(inv.orderId || '').toLowerCase();
+      const cleanOrderId = orderId.replace(/^rm-?/i, '').replace(/^#/i, '').trim();
+      const customer = String(inv.customer || '').toLowerCase();
+      const email = String(inv.email || '').toLowerCase();
+      const amount = String(inv.amount || '').toLowerCase();
+
+      return (
+        id.includes(q) ||
+        (cleanQ.length > 0 && cleanInvId.includes(cleanQ)) ||
+        orderId.includes(q) ||
+        (cleanQ.length > 0 && cleanOrderId.includes(cleanQ)) ||
+        customer.includes(q) ||
+        email.includes(q) ||
+        amount.includes(q)
+      );
+    });
+  }, [invoices, searchQuery]);
 
   const activeLedgerAccount = invoiceOrder ? ledgerAccounts.find(acc => 
     (invoiceOrder.userId && acc.id === invoiceOrder.userId) || 
@@ -73,9 +112,18 @@ export default function Invoices() {
           type="text"
           placeholder="Search by Invoice ID, Order ID, or Customer..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="input-field w-full pl-10"
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="input-field w-full pl-10 pr-9"
         />
+        {searchQuery && (
+          <button
+            onClick={() => handleSearchChange('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5"
+            title="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {loading ? (

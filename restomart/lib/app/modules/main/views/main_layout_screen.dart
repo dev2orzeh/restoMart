@@ -68,24 +68,25 @@ class MainLayoutScreen extends GetView<MainController> {
                   const Icon(Icons.shopping_cart_outlined, color: Color(0xFF25258F)),
                   if (cartItemsCount > 0)
                     Positioned(
-                      right: -2,
+                      right: -3,
                       top: -4,
                       child: Container(
                         padding: const EdgeInsets.all(3),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFE53935),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFC400),
                           shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 1.5),
                         ),
                         constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
+                          minWidth: 17,
+                          minHeight: 17,
                         ),
                         child: Text(
                           '$cartItemsCount',
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: Color(0xFF1B1B3A),
                             fontSize: 9,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w900,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -105,44 +106,32 @@ class MainLayoutScreen extends GetView<MainController> {
                   : Get.put(NotificationsController());
               return Obx(() {
                 final unreadCount = notifController.unreadCount;
-            return IconButton(
-              icon: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  const Icon(Icons.notifications_none_rounded, color: Color(0xFF25258F)),
-                  if (unreadCount > 0)
-                    Positioned(
-                      right: -2,
-                      top: -2,
-                      child: Container(
-                        padding: const EdgeInsets.all(3),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFE53935),
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
-                        ),
-                        child: Text(
-                          '$unreadCount',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
+                return IconButton(
+                  icon: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      const Icon(Icons.notifications_none_rounded, color: Color(0xFF25258F)),
+                      if (unreadCount > 0)
+                        Positioned(
+                          right: 1,
+                          top: 1,
+                          child: Container(
+                            width: 9,
+                            height: 9,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFC400),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 1.5),
+                            ),
                           ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    )
-                ],
-              ),
-              onPressed: () {
-                notifController.markAllAsRead();
-                Get.to(() => const NotificationsView());
-              },
-              );
-            });
+                        )
+                    ],
+                  ),
+                  onPressed: () {
+                    Get.to(() => const NotificationsView());
+                  },
+                );
+              });
             },
           ),
           const SizedBox(width: 8),
@@ -275,11 +264,11 @@ class MainLayoutScreen extends GetView<MainController> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(icon: Icons.category_outlined, label: 'Categories', index: 0),
-              _buildNavItem(icon: Icons.card_giftcard, label: 'Promotions', index: 1),
+              _buildNavItem(icon: Icons.category_outlined, activeIcon: Icons.category_rounded, label: 'Categories', index: 0),
+              _buildNavItem(icon: Icons.card_giftcard_outlined, activeIcon: Icons.card_giftcard_rounded, label: 'Promotions', index: 1),
               const SizedBox(width: 48), // Space for FAB
-              _buildNavItem(icon: Icons.notifications_none, label: 'Notifications', index: 3),
-              _buildNavItem(icon: Icons.person_outline, label: 'Account', index: 4),
+              _buildNavItem(icon: Icons.notifications_none_rounded, activeIcon: Icons.notifications_rounded, label: 'Notifications', index: 3),
+              _buildNavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Account', index: 4),
             ],
           ),
         ),
@@ -288,32 +277,45 @@ class MainLayoutScreen extends GetView<MainController> {
     );
   }
 
-  Widget _buildNavItem({required IconData icon, required String label, required int index}) {
-    // In the provided design, all nav items use the primary blue color regardless of active state.
-    const color = AppColors.primary;
+  Widget _buildNavItem({required IconData icon, required IconData activeIcon, required String label, required int index}) {
+    return Obx(() {
+      final isSelected = controller.currentIndex.value == index;
+      final color = isSelected ? AppColors.primary : const Color(0xFF8B92A5);
 
-    return InkWell(
-      onTap: () => controller.changeTab(index),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon, 
-            color: color, 
-            size: 24,
+      return InkWell(
+        onTap: () => controller.changeTab(index),
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppColors.primary.withValues(alpha: 0.12) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  isSelected ? activeIcon : icon, 
+                  color: color, 
+                  size: 22,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: color,
+                  fontSize: 10,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: AppTextStyles.bodySmall.copyWith(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
+        ),
+      );
+    });
   }
 }

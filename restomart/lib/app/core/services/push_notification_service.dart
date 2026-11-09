@@ -6,13 +6,62 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../modules/main/controllers/notifications_controller.dart';
 import '../../modules/ledger/views/ledger_view.dart';
 import '../../modules/orders/views/orders_view.dart';
 import 'woocommerce_api_service.dart';
 
+@pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   log("Handling a background message: ${message.messageId}");
+
+  final prefs = await SharedPreferences.getInstance();
+  final isEnabled = prefs.getBool('notifications_enabled') ?? true;
+  if (!isEnabled) {
+    log("User has disabled notifications toggle. Suppressing background alert.");
+    return;
+  }
+
+  final FlutterLocalNotificationsPlugin localPlugin = FlutterLocalNotificationsPlugin();
+  const AndroidInitializationSettings androidSettings =
+      AndroidInitializationSettings('@mipmap/launcher_icon');
+  const InitializationSettings initSettings =
+      InitializationSettings(android: androidSettings);
+  await localPlugin.initialize(settings: initSettings);
+
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'restomart_high_importance_channel',
+    'RestoMart Alerts',
+    description: 'Important notifications like order status updates.',
+    importance: Importance.max,
+  );
+
+  await localPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
+  final title = message.notification?.title ?? message.data['title'] ?? 'RestoMart Update';
+  final body = message.notification?.body ?? message.data['body'] ?? message.data['description'] ?? 'You have a new update regarding your order.';
+
+  await localPlugin.show(
+    id: message.hashCode,
+    title: title,
+    body: body,
+    notificationDetails: const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'restomart_high_importance_channel',
+        'RestoMart Alerts',
+        channelDescription: 'Important notifications like order status updates.',
+        icon: '@mipmap/launcher_icon',
+        importance: Importance.max,
+        priority: Priority.high,
+        visibility: NotificationVisibility.public,
+      ),
+    ),
+    payload: message.data['action'] ?? 'order_view',
+  );
 }
 
 class PushNotificationService {
@@ -21,17 +70,26 @@ class PushNotificationService {
       FlutterLocalNotificationsPlugin();
 
   static Future<void> initialize() async {
-    // 1. Request permissions for iOS and newer Androids
+    // 1. Request permissions for iOS and newer Androids (including Android 13+)
     NotificationSettings settings = await _firebaseMessaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
+      provisional: false,
     );
 
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      log('User granted permission');
+    if (settings.authorizationStatus == AuthorizationStatus.authorized || settings.authorizationStatus == AuthorizationStatus.provisional) {
+      log('User granted notification permission');
+      final prefs = await SharedPreferences.getInstance();
+      if (!prefs.containsKey('notifications_enabled')) {
+        await prefs.setBool('notifications_enabled', true);
+      }
     } else {
       log('User declined or has not accepted permission');
+      final prefs = await SharedPreferences.getInstance();
+      if (!prefs.containsKey('notifications_enabled')) {
+        await prefs.setBool('notifications_enabled', false);
+      }
     }
 
     // 2. Setup Background Handler
@@ -39,14 +97,14 @@ class PushNotificationService {
 
     // 3. Initialize Local Notifications (for showing notifications while app is in foreground)
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@mipmap/launcher_icon');
     
     // For iOS
     const DarwinInitializationSettings initializationSettingsDarwin =
         DarwinInitializationSettings(
-      requestAlertPermission: false,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
     );
     
     const InitializationSettings initializationSettings = InitializationSettings(
@@ -80,8 +138,15 @@ class PushNotificationService {
         ?.createNotificationChannel(channel);
 
     // 5. Handle foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       log('Received a foreground message: ${message.notification?.title}');
+      
+      final prefs = await SharedPreferences.getInstance();
+      final isEnabled = prefs.getBool('notifications_enabled') ?? true;
+      if (!isEnabled) {
+        log('Notification toggle is OFF, suppressing notification display');
+        return;
+      }
       
       RemoteNotification? notification = message.notification;
       AndroidNotification? android = message.notification?.android;
@@ -96,9 +161,10 @@ class PushNotificationService {
               channel.id,
               channel.name,
               channelDescription: channel.description,
-              icon: '@mipmap/ic_launcher',
+              icon: '@mipmap/launcher_icon',
               importance: Importance.max,
               priority: Priority.high,
+              visibility: NotificationVisibility.public,
             ),
           ),
           payload: jsonEncode(message.data),
@@ -148,7 +214,7 @@ class PushNotificationService {
       channelDescription: 'Important notifications like order status updates.',
       importance: Importance.max,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
+      icon: '@mipmap/launcher_icon',
     );
 
     const NotificationDetails platformDetails = NotificationDetails(
@@ -182,7 +248,7 @@ class PushNotificationService {
       channelDescription: 'Important notifications like order status updates.',
       importance: Importance.max,
       priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
+      icon: '@mipmap/launcher_icon',
     );
 
     const NotificationDetails platformDetails = NotificationDetails(

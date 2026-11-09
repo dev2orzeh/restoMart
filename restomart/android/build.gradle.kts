@@ -21,6 +21,9 @@ subprojects {
         project.extensions.configure<com.android.build.gradle.LibraryExtension> {
             compileSdk = 36
         }
+        if (!project.plugins.hasPlugin("org.jetbrains.kotlin.android")) {
+            project.plugins.apply("org.jetbrains.kotlin.android")
+        }
     }
 }
 

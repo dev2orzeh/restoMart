@@ -1,15 +1,23 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Search, Eye, ShoppingBag, Wallet } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { Search, Eye, ShoppingBag, Wallet, X } from 'lucide-react';
 import { mockCustomers } from '../data/mockData';
 import { getCustomers } from '../services/woocommerce';
 import { subscribeToLedgerAccounts, subscribeToOrders } from '../services/firebase';
 import Loader from '../components/shared/Loader';
 
 export default function Customers() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlQ = searchParams.get('q') || '';
+  const [searchQuery, setSearchQuery] = useState(urlQ);
   const [ledgerAccounts, setLedgerAccounts] = useState([]);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const qParam = searchParams.get('q') || '';
+    setSearchQuery(qParam);
+  }, [searchParams]);
 
   useEffect(() => {
     let isMounted = true;
@@ -45,20 +53,23 @@ export default function Customers() {
   const customersList = useMemo(() => {
     if (!ledgerAccounts || ledgerAccounts.length === 0) return [];
 
-    // Map order counts per email & phone
+    // Map order counts per uid, email & phone
     const orderCountMap = {};
     orders.forEach(o => {
       if (o.status === 'cancelled') return;
+      const uid = (o.userId || o.uid || '').trim();
       const email = (o.email || o.billing?.email || '').toLowerCase().trim();
       const phone = (o.phone || o.billing?.phone || '').trim();
+      if (uid) orderCountMap[uid] = (orderCountMap[uid] || 0) + 1;
       if (email) orderCountMap[email] = (orderCountMap[email] || 0) + 1;
       if (phone) orderCountMap[phone] = (orderCountMap[phone] || 0) + 1;
     });
 
     return ledgerAccounts.map((acc) => {
-      const email = (acc.customerEmail || acc.id || '').toLowerCase().trim();
+      const uid = (acc.id || acc.uid || '').trim();
+      const email = (acc.customerEmail || '').toLowerCase().trim();
       const phone = (acc.customerPhone || '').trim();
-      const count = orderCountMap[email] || orderCountMap[phone] || (acc.totalDebit > 0 ? 1 : 0);
+      const count = (uid && orderCountMap[uid]) || (email && orderCountMap[email]) || (phone && orderCountMap[phone]) || 0;
       const bal = Math.round(parseFloat(acc.balance || 0) * 100) / 100;
 
       let lastDate = 'Recent';
@@ -90,14 +101,25 @@ export default function Customers() {
     });
   }, [ledgerAccounts, orders]);
 
-  const filtered = searchQuery
-    ? customersList.filter(
-        (c) =>
-          c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.phone.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : customersList;
+  const handleSearchChange = (val) => {
+    setSearchQuery(val);
+    if (val.trim()) {
+      setSearchParams({ q: val }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  const filtered = useMemo(() => {
+    if (!searchQuery || !searchQuery.trim()) return customersList;
+    const q = searchQuery.toLowerCase().trim();
+    return customersList.filter((c) => {
+      const name = String(c.name || '').toLowerCase();
+      const email = String(c.email || '').toLowerCase();
+      const phone = String(c.phone || '').toLowerCase();
+      return name.includes(q) || email.includes(q) || phone.includes(q);
+    });
+  }, [customersList, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -114,9 +136,18 @@ export default function Customers() {
           type="text"
           placeholder="Search customers by name, email, or phone..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="input-field w-full pl-10"
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="input-field w-full pl-10 pr-9"
         />
+        {searchQuery && (
+          <button
+            onClick={() => handleSearchChange('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-0.5"
+            title="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {loading ? (

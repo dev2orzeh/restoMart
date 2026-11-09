@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { 
   Box, 
   Typography, 
@@ -19,12 +20,15 @@ import {
   TextField,
   MenuItem,
   Collapse,
-  CircularProgress
+  CircularProgress,
+  InputAdornment
 } from '@mui/material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import PaymentIcon from '@mui/icons-material/Payment';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SearchIcon from '@mui/icons-material/Search';
+import ClearIcon from '@mui/icons-material/Clear';
 import { subscribeToLedgerAccounts, fetchLedgerTransactions, recordLedgerPayment, syncLedgerAccountsWithOrders } from '../services/firebase';
 import { format } from 'date-fns';
 import Loader from '../components/shared/Loader';
@@ -36,7 +40,7 @@ function Row(props) {
   const [loadingTxns, setLoadingTxns] = useState(false);
 
   const handleExpand = async () => {
-    if (!open && transactions.length === 0) {
+    if (!open) {
       setLoadingTxns(true);
       try {
         const txns = await fetchLedgerTransactions(row.id);
@@ -146,6 +150,9 @@ function Row(props) {
 }
 
 export default function Ledger() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlQ = searchParams.get('q') || '';
+  const [searchQuery, setSearchQuery] = useState(urlQ);
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -156,6 +163,11 @@ export default function Ledger() {
   const [note, setNote] = useState('');
   const [orderId, setOrderId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    const qParam = searchParams.get('q') || '';
+    setSearchQuery(qParam);
+  }, [searchParams]);
 
   useEffect(() => {
     setLoading(true);
@@ -169,6 +181,26 @@ export default function Ledger() {
     );
     return () => unsubscribe();
   }, []);
+
+  const handleSearchChange = (val) => {
+    setSearchQuery(val);
+    if (val.trim()) {
+      setSearchParams({ q: val }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  const filteredAccounts = useMemo(() => {
+    if (!searchQuery || !searchQuery.trim()) return accounts;
+    const q = searchQuery.toLowerCase().trim();
+    return accounts.filter((acc) => {
+      const name = String(acc.customerName || '').toLowerCase();
+      const phone = String(acc.customerPhone || '').toLowerCase();
+      const email = String(acc.customerEmail || '').toLowerCase();
+      return name.includes(q) || phone.includes(q) || email.includes(q);
+    });
+  }, [accounts, searchQuery]);
 
   const handleOpenPayment = (account) => {
     setSelectedAccount(account);
@@ -232,6 +264,30 @@ export default function Ledger() {
         </Button>
       </Box>
 
+      <Box sx={{ mb: 3, maxWidth: 380 }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search ledger by customer, phone, email..."
+          value={searchQuery}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon color="action" fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery ? (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => handleSearchChange('')}>
+                  <ClearIcon fontSize="small" />
+                </IconButton>
+              </InputAdornment>
+            ) : null,
+          }}
+        />
+      </Box>
+
       {loading ? (
         <Loader message="Syncing Business Khata & calculating balances..." />
       ) : (
@@ -248,14 +304,14 @@ export default function Ledger() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {accounts.map((account) => (
+              {filteredAccounts.map((account) => (
                 <Row key={account.id} row={account} onRecordPayment={handleOpenPayment} />
               ))}
-              {accounts.length === 0 && (
+              {filteredAccounts.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
                     <Typography variant="body1" color="text.secondary">
-                      No ledger accounts found. Customers need to place at least one order to appear here.
+                      {searchQuery ? "No matching ledger accounts found." : "No ledger accounts found. Customers need to place at least one order to appear here."}
                     </Typography>
                   </TableCell>
                 </TableRow>
