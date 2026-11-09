@@ -29,6 +29,50 @@ class CartView extends StatelessWidget {
           'My Cart',
           style: AppTextStyles.headingMedium.copyWith(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          Obx(() {
+            if (cartController.cartItems.isEmpty) return const SizedBox.shrink();
+            return TextButton.icon(
+              onPressed: () {
+                Get.dialog(
+                  AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    title: const Text('Empty Cart?'),
+                    content: const Text('Are you sure you want to remove all items from your cart?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Get.back(),
+                        child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red.shade600,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () {
+                          cartController.clearCart();
+                          Get.back();
+                          AppErrorHandler.showSuccess('Cart Cleared', 'All items have been removed from your cart.');
+                        },
+                        child: const Text('Empty Cart'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              icon: Icon(Icons.delete_sweep_outlined, color: Colors.red.shade600, size: 20),
+              label: Text(
+                'Empty',
+                style: TextStyle(
+                  color: Colors.red.shade600,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+            );
+          }),
+        ],
       ),
       body: Obx(() {
         if (cartController.cartItems.isEmpty) {
