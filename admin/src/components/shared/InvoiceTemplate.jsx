@@ -151,35 +151,50 @@ export default function InvoiceTemplate({ order, ledgerAccount, onClose }) {
             </div>
 
             <div className="border-l border-gray-200 pl-6">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Customer Business Khata (Ledger)</p>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Customer Business Khata (Ledger)</p>
               {ledgerAccount ? (
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total Purchased:</span>
-                    <span className="font-semibold text-gray-800">₨ {(ledgerAccount.totalDebit || 0).toLocaleString()}</span>
+                <div className="space-y-2 text-sm">
+                  {/* Total Debit / Purchased Card */}
+                  <div className="flex justify-between items-center p-2 rounded-lg bg-red-50/60 border border-red-100">
+                    <span className="font-medium text-red-900 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                      Total Orders (Debit):
+                    </span>
+                    <span className="font-bold text-red-700 text-sm">
+                      ₨ {(ledgerAccount.totalDebit || 0).toLocaleString()}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Total Payments Paid:</span>
-                    <span className="font-semibold text-emerald-700">₨ {(ledgerAccount.totalCredit || 0).toLocaleString()}</span>
+
+                  {/* Total Credit / Received Card */}
+                  <div className="flex justify-between items-center p-2 rounded-lg bg-emerald-50/60 border border-emerald-100">
+                    <span className="font-medium text-emerald-900 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      Payment Received (Credit):
+                    </span>
+                    <span className="font-bold text-emerald-700 text-sm">
+                      ₨ {(ledgerAccount.totalCredit || 0).toLocaleString()}
+                    </span>
                   </div>
-                  <div className="flex justify-between pt-1 border-t border-gray-200 font-bold">
-                    <span className="text-gray-900">
+
+                  {/* Outstanding Balance */}
+                  <div className="flex justify-between items-center pt-2 px-1 border-t border-gray-200 font-bold">
+                    <span className="text-gray-900 text-xs uppercase tracking-wide">
                       {(ledgerAccount.balance || 0) > 0 
                         ? "Outstanding Balance (Debt):" 
                         : (ledgerAccount.balance || 0) < 0 
                           ? "Advance Credit / Surplus:" 
                           : "Outstanding Balance:"}
                     </span>
-                    <span className={(ledgerAccount.balance || 0) > 0 ? "text-red-600" : "text-emerald-600"}>
+                    <span className={`text-base font-extrabold ${(ledgerAccount.balance || 0) > 0 ? "text-red-600" : "text-emerald-600"}`}>
                       ₨ {Math.abs(ledgerAccount.balance || 0).toLocaleString()}
                     </span>
                   </div>
                 </div>
               ) : (
-                <div className="text-sm space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Outstanding Balance:</span>
-                    <span className="font-bold text-emerald-600">₨ 0.00</span>
+                <div className="text-sm space-y-2">
+                  <div className="flex justify-between items-center p-2 rounded-lg bg-emerald-50/60 border border-emerald-100">
+                    <span className="font-medium text-emerald-900">Payment Status:</span>
+                    <span className="font-bold text-emerald-600">All Clear (₨ 0.00)</span>
                   </div>
                   <p className="text-xs text-gray-400">Account clear / no active debt.</p>
                 </div>
