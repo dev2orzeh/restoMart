@@ -14,7 +14,9 @@ import '../../../widgets/custom_text_field.dart';
 import '../../../widgets/primary_button.dart';
 import '../../../widgets/social_login_button.dart';
 import '../../../widgets/google_logo.dart';
+import '../../checkout/views/location_picker_view.dart';
 import '../controllers/auth_controller.dart';
+import 'dart:convert';
 
 class RegisterScreen extends GetView<AuthController> {
   const RegisterScreen({super.key});
@@ -61,7 +63,80 @@ class RegisterScreen extends GetView<AuthController> {
                   ),
                 ),
 
-                const SizedBox(height: AppDimensions.spacingXl),
+                const SizedBox(height: AppDimensions.spacingLg),
+
+                // ── Profile Photo Picker ─────────────────────────
+                Center(
+                  child: Stack(
+                    children: [
+                      Obx(() {
+                        final imgBase64 = controller.registerProfileImagePath.value;
+                        return Container(
+                          width: 100,
+                          height: 100,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFFF0F0FF),
+                            border: Border.all(color: const Color(0xFF25258F), width: 2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipOval(
+                            child: imgBase64.isNotEmpty
+                                ? Image.memory(
+                                    base64Decode(imgBase64.replaceFirst(RegExp(r'data:image/[^;]+;base64,'), '')),
+                                    fit: BoxFit.cover,
+                                    width: 100,
+                                    height: 100,
+                                  )
+                                : const Icon(
+                                    Icons.person_rounded,
+                                    size: 55,
+                                    color: Color(0xFF25258F),
+                                  ),
+                          ),
+                        );
+                      }),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: () => controller.pickRegisterProfileImage(),
+                          child: Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Color(0xFF25258F),
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Center(
+                  child: Text(
+                    'Add Profile Photo (Optional)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: AppDimensions.spacingLg),
 
                 // ── Full Name ───────────────────────────────────
                 CustomTextField(
@@ -127,17 +202,45 @@ class RegisterScreen extends GetView<AuthController> {
 
                 const SizedBox(height: AppDimensions.spacingMd),
 
-                // ── Restaurant Address ────────────────────────────
-                CustomTextField(
-                  controller: controller.registerRestaurantAddressController,
-                  hintText: 'Restaurant Address (e.g. Gulberg III, Lahore)',
-                  keyboardType: TextInputType.streetAddress,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Please enter your restaurant address';
+                // ── Restaurant Address (Pick on Map) ───────────
+                GestureDetector(
+                  onTap: () async {
+                    final result = await Get.to(() => const LocationPickerView());
+                    if (result != null && result['address'] != null) {
+                      controller.registerRestaurantAddressController.text = result['address'] as String;
+                      controller.registerLatitude.value = (result['lat'] as num?)?.toDouble();
+                      controller.registerLongitude.value = (result['lng'] as num?)?.toDouble();
                     }
-                    return null;
                   },
+                  child: AbsorbPointer(
+                    child: CustomTextField(
+                      controller: controller.registerRestaurantAddressController,
+                      hintText: 'Select Address on Map',
+                      prefixIcon: Icons.location_on_rounded,
+                      suffixIcon: Container(
+                        margin: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF25258F),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.map_rounded, color: Colors.white, size: 14),
+                            SizedBox(width: 4),
+                            Text('Map', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please select your address on map';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
                 ),
 
                 const SizedBox(height: AppDimensions.spacingMd),

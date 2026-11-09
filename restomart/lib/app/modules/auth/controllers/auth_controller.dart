@@ -33,6 +33,9 @@ class AuthController extends GetxController {
   final registerConfirmPasswordController = TextEditingController();
   final registerRestaurantNameController = TextEditingController();
   final registerRestaurantAddressController = TextEditingController();
+  final registerProfileImagePath = ''.obs;
+  final registerLatitude = Rxn<double>();
+  final registerLongitude = Rxn<double>();
   final registerFormKey = GlobalKey<FormState>();
 
   // Forgot Password
@@ -183,6 +186,33 @@ class AuthController extends GetxController {
       if (savedBusinessName != null && savedBusinessName.isNotEmpty) {
         businessName.value = savedBusinessName;
       }
+    }
+  }
+
+  Future<void> pickRegisterProfileImage() async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80,
+      );
+
+      if (image != null) {
+        final bytes = await File(image.path).readAsBytes();
+        final base64String = 'data:image/png;base64,${base64Encode(bytes)}';
+        registerProfileImagePath.value = base64String;
+      }
+    } catch (e) {
+      debugPrint('Error picking registration image: $e');
+      Get.snackbar(
+        'Error',
+        'Could not select image. Please try again.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.shade50,
+        colorText: Colors.red.shade900,
+      );
     }
   }
 
@@ -420,9 +450,36 @@ class AuthController extends GetxController {
             'phone': phone,
             'restaurantName': restaurantName,
             'restaurantAddress': restaurantAddress,
+            if (registerProfileImagePath.value.isNotEmpty)
+              'profileImagePath': registerProfileImagePath.value,
+            if (registerLatitude.value != null && registerLongitude.value != null) ...{
+              'latitude': registerLatitude.value,
+              'longitude': registerLongitude.value,
+            },
             'createdAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
+
+          // Save profile photo locally if uploaded
+          if (registerProfileImagePath.value.isNotEmpty) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('local_profile_image_$uid', registerProfileImagePath.value);
+          }
+
+          // Automatically save selected address to user's saved addresses
+          if (restaurantAddress.isNotEmpty) {
+            try {
+              final addressController = Get.isRegistered<AddressController>()
+                  ? Get.find<AddressController>()
+                  : Get.put(AddressController());
+              addressController.addAddress(
+                restaurantName.isNotEmpty ? restaurantName : 'Business Location',
+                restaurantAddress,
+                lat: registerLatitude.value,
+                lng: registerLongitude.value,
+              );
+            } catch (_) {}
+          }
 
           // 2. Ensure customer ledger account is created in 'ledger_accounts'
           await LedgerService.ensureAccountExists(
