@@ -184,24 +184,26 @@ class PdfInvoiceService {
                         pw.SizedBox(height: 5),
                         // Debit (Orders)
                         pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: const pw.BoxDecoration(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: pw.BoxDecoration(
                             color: PdfColors.red50,
-                            borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                            border: pw.Border.all(color: PdfColors.red200, width: 0.8),
                           ),
-                          child: pw.Text('Orders (Debit): Rs ${ledgerData['totalDebit']!.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
+                          child: pw.Text('Orders (Debit): Rs ${ledgerData['totalDebit']!.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
                         ),
-                        pw.SizedBox(height: 3),
+                        pw.SizedBox(height: 4),
                         // Credit (Received)
                         pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: const pw.BoxDecoration(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: pw.BoxDecoration(
                             color: PdfColors.green50,
-                            borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                            border: pw.Border.all(color: PdfColors.green200, width: 0.8),
                           ),
-                          child: pw.Text('Received (Credit): Rs ${ledgerData['totalCredit']!.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
+                          child: pw.Text('Received (Credit): Rs ${ledgerData['totalCredit']!.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
                         ),
-                        pw.SizedBox(height: 3),
+                        pw.SizedBox(height: 4),
                         pw.Text(
                           (ledgerData['balance']! > 0)
                               ? 'Outstanding Balance (Debt): Rs ${ledgerData['balance']!.toStringAsFixed(2)}'
@@ -209,9 +211,9 @@ class PdfInvoiceService {
                                   ? 'Advance Surplus: Rs ${ledgerData['balance']!.abs().toStringAsFixed(2)}'
                                   : 'Outstanding Balance: Rs 0.00',
                           style: pw.TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: pw.FontWeight.bold,
-                            color: ledgerData['balance']! > 0 ? PdfColors.red700 : PdfColors.green700,
+                            color: ledgerData['balance']! > 0 ? PdfColors.red900 : PdfColors.green900,
                           ),
                         ),
                       ],
@@ -371,24 +373,26 @@ class PdfInvoiceService {
                         pw.SizedBox(height: 5),
                         // Debit (Orders)
                         pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: const pw.BoxDecoration(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: pw.BoxDecoration(
                             color: PdfColors.red50,
-                            borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                            border: pw.Border.all(color: PdfColors.red200, width: 0.8),
                           ),
-                          child: pw.Text('Orders (Debit): Rs ${ledgerData['totalDebit']!.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.red800)),
+                          child: pw.Text('Orders (Debit): Rs ${ledgerData['totalDebit']!.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.red900)),
                         ),
-                        pw.SizedBox(height: 3),
+                        pw.SizedBox(height: 4),
                         // Credit (Received)
                         pw.Container(
-                          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: const pw.BoxDecoration(
+                          padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: pw.BoxDecoration(
                             color: PdfColors.green50,
-                            borderRadius: pw.BorderRadius.all(pw.Radius.circular(3)),
+                            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                            border: pw.Border.all(color: PdfColors.green200, width: 0.8),
                           ),
-                          child: pw.Text('Received (Credit): Rs ${ledgerData['totalCredit']!.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.green800)),
+                          child: pw.Text('Received (Credit): Rs ${ledgerData['totalCredit']!.toStringAsFixed(2)}', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
                         ),
-                        pw.SizedBox(height: 3),
+                        pw.SizedBox(height: 4),
                         pw.Text(
                           (ledgerData['balance']! > 0)
                               ? 'Outstanding Balance (Debt): Rs ${ledgerData['balance']!.toStringAsFixed(2)}'
@@ -396,9 +400,9 @@ class PdfInvoiceService {
                                   ? 'Advance Surplus: Rs ${ledgerData['balance']!.abs().toStringAsFixed(2)}'
                                   : 'Outstanding Balance: Rs 0.00',
                           style: pw.TextStyle(
-                            fontSize: 11,
+                            fontSize: 12,
                             fontWeight: pw.FontWeight.bold,
-                            color: ledgerData['balance']! > 0 ? PdfColors.red700 : PdfColors.green700,
+                            color: ledgerData['balance']! > 0 ? PdfColors.red900 : PdfColors.green900,
                           ),
                         ),
                       ],
