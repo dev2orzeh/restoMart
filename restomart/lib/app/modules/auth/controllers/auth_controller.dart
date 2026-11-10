@@ -107,7 +107,7 @@ class AuthController extends GetxController {
     });
   }
 
-  void _loadUserProfile() async {
+  Future<void> _loadUserProfile() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       userName.value = user.displayName ?? '';
