@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/services/woocommerce_api_service.dart';
 import '../../../widgets/product_card.dart';
 import '../../cart/controllers/cart_controller.dart';
@@ -66,14 +67,18 @@ class _SearchViewState extends State<SearchView> {
     super.dispose();
   }
 
+  String _getRecentSearchesKey() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null && uid.isNotEmpty) {
+      return 'recent_searches_user_$uid';
+    }
+    return 'recent_searches_guest';
+  }
+
   Future<void> _loadRecentSearches() async {
     final prefs = await SharedPreferences.getInstance();
-    final loaded = prefs.getStringList('recent_searches_list') ?? [
-      'mezan oil',
-      'cheese slices',
-      'milk 1L',
-      'tea bags',
-    ];
+    final key = _getRecentSearchesKey();
+    final loaded = prefs.getStringList(key) ?? <String>[];
     setState(() {
       _recentSearches = loaded;
     });
@@ -84,12 +89,13 @@ class _SearchViewState extends State<SearchView> {
     if (q.isEmpty) return;
 
     final prefs = await SharedPreferences.getInstance();
+    final key = _getRecentSearchesKey();
     _recentSearches.removeWhere((item) => item.toLowerCase() == q.toLowerCase());
     _recentSearches.insert(0, q);
     if (_recentSearches.length > 10) {
       _recentSearches = _recentSearches.sublist(0, 10);
     }
-    await prefs.setStringList('recent_searches_list', _recentSearches);
+    await prefs.setStringList(key, _recentSearches);
     setState(() {});
   }
 
@@ -97,7 +103,8 @@ class _SearchViewState extends State<SearchView> {
     if (index >= 0 && index < _recentSearches.length) {
       _recentSearches.removeAt(index);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setStringList('recent_searches_list', _recentSearches);
+      final key = _getRecentSearchesKey();
+      await prefs.setStringList(key, _recentSearches);
       setState(() {});
     }
   }
@@ -105,7 +112,8 @@ class _SearchViewState extends State<SearchView> {
   Future<void> _clearAllRecentSearches() async {
     _recentSearches.clear();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('recent_searches_list');
+    final key = _getRecentSearchesKey();
+    await prefs.remove(key);
     setState(() {});
   }
 

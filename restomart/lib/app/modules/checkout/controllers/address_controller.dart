@@ -134,9 +134,11 @@ class AddressController extends GetxController {
       final chosen = savedAddresses.removeAt(index);
       savedAddresses.insert(0, chosen);
       selectedAddressIndex.value = 0;
+      savedAddresses.refresh();
       _saveToStorage();
     } else if (index == 0) {
       selectedAddressIndex.value = 0;
+      savedAddresses.refresh();
       _saveToStorage();
     }
   }

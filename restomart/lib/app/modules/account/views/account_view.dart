@@ -606,7 +606,10 @@ class AccountView extends StatelessWidget {
                         child: const Text('Default Address', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
                     ] else ...[
-                      _SetAsDefaultButton(onPressed: onSetDefault),
+                      _SetAsDefaultButton(
+                        key: ValueKey(address),
+                        onPressed: onSetDefault,
+                      ),
                     ],
                     if (onDelete != null) ...[
                       PopupMenuButton<String>(
@@ -1088,7 +1091,7 @@ class AppAlertsController extends GetxController {
 class _SetAsDefaultButton extends StatefulWidget {
   final VoidCallback onPressed;
 
-  const _SetAsDefaultButton({required this.onPressed});
+  const _SetAsDefaultButton({super.key, required this.onPressed});
 
   @override
   State<_SetAsDefaultButton> createState() => _SetAsDefaultButtonState();
@@ -1126,6 +1129,10 @@ class _SetAsDefaultButtonState extends State<_SetAsDefaultButton> with SingleTic
     await _animController.reverse();
 
     widget.onPressed();
+
+    if (mounted) {
+      setState(() => _isProcessing = false);
+    }
   }
 
   @override
