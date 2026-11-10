@@ -274,45 +274,17 @@ class _CategoriesViewState extends State<CategoriesView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Top Header: Back Button & "Shop Categories" ──
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: Row(
-                      children: [
-                        InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () {
-                            if (Navigator.canPop(context)) {
-                              Navigator.pop(context);
-                            } else if (Get.isRegistered<MainController>()) {
-                              Get.find<MainController>().changeTab(2);
-                            }
-                          },
-                          child: Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF3F5FA),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              size: 16,
-                              color: Color(0xFF1B1B3A),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        const Text(
-                          'Shop Categories',
-                          style: TextStyle(
-                            color: Color(0xFF1B1B3A),
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.4,
-                          ),
-                        ),
-                      ],
+                  // ── Top Header: "Shop Categories" ──
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Text(
+                      'Shop Categories',
+                      style: TextStyle(
+                        color: Color(0xFF1B1B3A),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                      ),
                     ),
                   ),
 
