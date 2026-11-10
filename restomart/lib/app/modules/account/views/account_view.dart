@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get/get.dart';
@@ -605,17 +606,7 @@ class AccountView extends StatelessWidget {
                         child: const Text('Default Address', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
                     ] else ...[
-                      InkWell(
-                        onTap: onSetDefault,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFF25258F)),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text('Set as Default', style: TextStyle(color: Color(0xFF25258F), fontSize: 11, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
+                      _SetAsDefaultButton(onPressed: onSetDefault),
                     ],
                     if (onDelete != null) ...[
                       PopupMenuButton<String>(
@@ -1093,4 +1084,95 @@ class AppAlertsController extends GetxController {
     }
   }
 }
+
+class _SetAsDefaultButton extends StatefulWidget {
+  final VoidCallback onPressed;
+
+  const _SetAsDefaultButton({required this.onPressed});
+
+  @override
+  State<_SetAsDefaultButton> createState() => _SetAsDefaultButtonState();
+}
+
+class _SetAsDefaultButtonState extends State<_SetAsDefaultButton> with SingleTickerProviderStateMixin {
+  late AnimationController _animController;
+  late Animation<double> _scaleAnimation;
+  bool _isProcessing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 140),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.90).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleTap() async {
+    if (_isProcessing) return;
+    setState(() => _isProcessing = true);
+
+    HapticFeedback.lightImpact();
+    await _animController.forward();
+    await _animController.reverse();
+
+    widget.onPressed();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scaleAnimation,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          splashColor: const Color(0xFF25258F).withValues(alpha: 0.15),
+          highlightColor: const Color(0xFF25258F).withValues(alpha: 0.08),
+          onTap: _handleTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: _isProcessing ? const Color(0xFF25258F).withValues(alpha: 0.1) : Colors.transparent,
+              border: Border.all(color: const Color(0xFF25258F), width: 1.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: _isProcessing
+                ? const SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF25258F)),
+                  )
+                : const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle_outline, size: 13, color: Color(0xFF25258F)),
+                      SizedBox(width: 4),
+                      Text(
+                        'Set as Default',
+                        style: TextStyle(
+                          color: Color(0xFF25258F),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 
