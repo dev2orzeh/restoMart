@@ -426,6 +426,8 @@ class _CategoriesViewState extends State<CategoriesView> {
   // ============================================================
 
   Widget _buildCategoryCard(Map<String, dynamic> category) {
+    final title = (category['title'] as String?) ?? '';
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -454,21 +456,66 @@ class _CategoriesViewState extends State<CategoriesView> {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),
-            child: (category['image'] as String).startsWith('http')
-                ? Image.network(
-                    category['image'] as String,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Center(
-                      child: Icon(Icons.inventory_2_outlined, color: secondaryText, size: 45),
-                    ),
-                  )
-                : Image.asset(
-                    category['image'] as String,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Center(
-                      child: Icon(Icons.inventory_2_outlined, color: secondaryText, size: 45),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                (category['image'] as String).startsWith('http')
+                    ? Image.network(
+                        category['image'] as String,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Icon(Icons.inventory_2_outlined, color: secondaryText, size: 45),
+                        ),
+                      )
+                    : Image.asset(
+                        category['image'] as String,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Icon(Icons.inventory_2_outlined, color: secondaryText, size: 45),
+                        ),
+                      ),
+                // Bottom category name label
+                if (title.isNotEmpty)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.45),
+                            Colors.black.withOpacity(0.75),
+                          ],
+                        ),
+                      ),
+                      child: Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.1,
+                          shadows: [
+                            Shadow(
+                              offset: Offset(0, 1),
+                              blurRadius: 3,
+                              color: Colors.black54,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
+              ],
+            ),
           ),
         ),
       ),
