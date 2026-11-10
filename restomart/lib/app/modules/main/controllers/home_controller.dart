@@ -2,6 +2,7 @@ import 'dart:developer';
 import 'package:get/get.dart';
 import '../../../core/services/woocommerce_api_service.dart';
 import '../../../core/utils/error_handler.dart';
+import '../../checkout/controllers/address_controller.dart';
 
 class WooCommerceProduct {
   final int id;
@@ -116,6 +117,13 @@ class HomeController extends GetxController {
   void onInit() {
     super.onInit();
     loadData();
+
+    // Check location after screen finishes rendering
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (Get.isRegistered<AddressController>()) {
+        Get.find<AddressController>().checkLocationMismatchAndPrompt();
+      }
+    });
   }
 
   Future<void> loadData() async {

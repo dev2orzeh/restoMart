@@ -1100,7 +1100,6 @@ class _SetAsDefaultButton extends StatefulWidget {
 class _SetAsDefaultButtonState extends State<_SetAsDefaultButton> with SingleTickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
-  bool _isProcessing = false;
 
   @override
   void initState() {
@@ -1121,18 +1120,10 @@ class _SetAsDefaultButtonState extends State<_SetAsDefaultButton> with SingleTic
   }
 
   Future<void> _handleTap() async {
-    if (_isProcessing) return;
-    setState(() => _isProcessing = true);
-
     HapticFeedback.lightImpact();
     await _animController.forward();
     await _animController.reverse();
-
     widget.onPressed();
-
-    if (mounted) {
-      setState(() => _isProcessing = false);
-    }
   }
 
   @override
@@ -1146,35 +1137,28 @@ class _SetAsDefaultButtonState extends State<_SetAsDefaultButton> with SingleTic
           splashColor: const Color(0xFF25258F).withValues(alpha: 0.15),
           highlightColor: const Color(0xFF25258F).withValues(alpha: 0.08),
           onTap: _handleTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
+          child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
-              color: _isProcessing ? const Color(0xFF25258F).withValues(alpha: 0.1) : Colors.transparent,
+              color: Colors.transparent,
               border: Border.all(color: const Color(0xFF25258F), width: 1.2),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: _isProcessing
-                ? const SizedBox(
-                    width: 12,
-                    height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF25258F)),
-                  )
-                : const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle_outline, size: 13, color: Color(0xFF25258F)),
-                      SizedBox(width: 4),
-                      Text(
-                        'Set as Default',
-                        style: TextStyle(
-                          color: Color(0xFF25258F),
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.check_circle_outline, size: 13, color: Color(0xFF25258F)),
+                SizedBox(width: 4),
+                Text(
+                  'Set as Default',
+                  style: TextStyle(
+                    color: Color(0xFF25258F),
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
                   ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
