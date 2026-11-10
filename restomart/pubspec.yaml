@@ -33,6 +33,7 @@ dependencies:
   mailer: ^7.2.0
   pdf: ^3.11.0
   printing: ^5.13.0
+  path_provider: ^2.1.5
   shared_preferences: ^2.5.5
   shimmer: ^3.0.0
   url_launcher: ^6.3.2
@@ -52,3 +53,4 @@ flutter:
     - assets/images/RestoMart_All_Category_Images_430x430/
     - assets/icons/
     - assets/data/
+    - assets/fonts/

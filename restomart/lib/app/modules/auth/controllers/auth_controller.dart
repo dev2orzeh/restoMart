@@ -542,16 +542,27 @@ class AuthController extends GetxController {
 
       UserCredential userCred = await FirebaseAuth.instance.signInWithCredential(credential);
       final user = userCred.user;
+      bool isNewUserOrMissingDetails = false;
       if (user != null) {
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        final existingData = userDoc.data();
+        final hasPhone = (existingData?['phone'] != null && (existingData!['phone'] as String).trim().isNotEmpty);
+        final hasBusiness = (existingData?['businessName'] != null && (existingData!['businessName'] as String).trim().isNotEmpty) ||
+            (existingData?['restaurantName'] != null && (existingData!['restaurantName'] as String).trim().isNotEmpty);
+
+        if (!userDoc.exists || !hasPhone || !hasBusiness) {
+          isNewUserOrMissingDetails = true;
+        }
+
         final name = user.displayName ?? 'Customer';
         final email = user.email ?? '';
-        final phone = user.phoneNumber ?? '';
+        final phone = existingData?['phone'] ?? user.phoneNumber ?? '';
 
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'uid': user.uid,
           'name': name,
           'email': email,
-          'phone': phone,
+          if (phone.toString().isNotEmpty) 'phone': phone,
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
 
@@ -559,7 +570,7 @@ class AuthController extends GetxController {
           uid: user.uid,
           name: name,
           email: email,
-          phone: phone,
+          phone: phone.toString(),
         );
       }
 
@@ -576,7 +587,14 @@ class AuthController extends GetxController {
       }
 
       await Future.delayed(const Duration(milliseconds: 500));
+      await _loadUserProfile();
       Get.offAllNamed(AppRoutes.home);
+
+      if (isNewUserOrMissingDetails) {
+        Future.delayed(const Duration(milliseconds: 800), () {
+          _promptCompleteProfileSheet();
+        });
+      }
     } on GoogleSignInException catch (e) {
       // Ignore cancellation exceptions
       if (e.code == GoogleSignInExceptionCode.canceled ||
@@ -914,5 +932,164 @@ class AuthController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  void _promptCompleteProfileSheet() {
+    final phoneCtrl = TextEditingController(text: userPhone.value);
+    final businessCtrl = TextEditingController(text: businessName.value);
+    final formKey = GlobalKey<FormState>();
+
+    Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF25258F).withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.storefront_rounded, color: Color(0xFF25258F), size: 22),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Complete Your Business Profile',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFF25258F)),
+                          ),
+                          Text(
+                            'Add your business & phone for delivery updates',
+                            style: TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                TextFormField(
+                  controller: businessCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Restaurant / Business Name',
+                    prefixIcon: const Icon(Icons.store_outlined, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter your restaurant/business name' : null,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: InputDecoration(
+                    labelText: 'Contact Phone Number',
+                    prefixIcon: const Icon(Icons.phone_outlined, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Please enter your phone number';
+                    if (v.replaceAll(RegExp(r'[^0-9]'), '').length < 10) return 'Please enter a valid phone number';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 22),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25258F),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    onPressed: () async {
+                      if (!formKey.currentState!.validate()) return;
+                      final uid = FirebaseAuth.instance.currentUser?.uid;
+                      final phone = phoneCtrl.text.trim();
+                      final biz = businessCtrl.text.trim();
+
+                      userPhone.value = phone;
+                      businessName.value = biz;
+
+                      if (uid != null) {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setString('local_business_name_$uid', biz);
+                        await prefs.setString('cached_user_phone_$uid', phone);
+                        await prefs.setString('cached_user_business_$uid', biz);
+
+                        try {
+                          await FirebaseFirestore.instance.collection('users').doc(uid).set({
+                            'businessName': biz,
+                            'restaurantName': biz,
+                            'phone': phone,
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          }, SetOptions(merge: true));
+
+                          await LedgerService.ensureAccountExists(
+                            uid: uid,
+                            name: userName.value,
+                            email: userEmail.value,
+                            phone: phone,
+                          );
+                        } catch (_) {}
+                      }
+
+                      Get.back();
+                      Get.snackbar(
+                        'Profile Completed',
+                        'Your business details have been saved.',
+                        snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: Colors.green.shade50,
+                        colorText: Colors.green.shade900,
+                      );
+                    },
+                    child: const Text(
+                      'Save & Continue',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Center(
+                  child: TextButton(
+                    onPressed: () => Get.back(),
+                    child: Text('I will do this later', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      isScrollControlled: true,
+    );
   }
 }

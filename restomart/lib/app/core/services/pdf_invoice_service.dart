@@ -1,19 +1,39 @@
+import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../modules/orders/controllers/orders_controller.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 class PdfInvoiceService {
+  static pw.Font? _cachedArabicFont;
+
+  static Future<pw.Font> _loadArabicFont() async {
+    if (_cachedArabicFont != null) return _cachedArabicFont!;
+    try {
+      final fontData = await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
+      _cachedArabicFont = pw.Font.ttf(fontData);
+      return _cachedArabicFont!;
+    } catch (e) {
+      debugPrint('Error loading Arabic/Urdu font: $e');
+      return pw.Font.helvetica();
+    }
+  }
+
   static String _sanitizeText(String text) {
     return text
         .replaceAll('&#8217;', "'")
         .replaceAll('&#039;', "'")
         .replaceAll('&amp;', '&')
         .replaceAll('&quot;', '"')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
         .replaceAll('’', "'")
         .replaceAll('‘', "'")
         .replaceAll('“', '"')
@@ -53,8 +73,13 @@ class PdfInvoiceService {
     final Uint8List logoBytes = bytes.buffer.asUint8List();
     final logoImage = pw.MemoryImage(logoBytes);
     final ledgerData = await _getLedgerInfo();
+    final arabicFont = await _loadArabicFont();
 
-    final pdf = pw.Document();
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(
+        fontFallback: [arabicFont],
+      ),
+    );
 
     pdf.addPage(
       pw.Page(
@@ -234,10 +259,45 @@ class PdfInvoiceService {
       ),
     );
 
-    // Give user the option to Share/Save/Print
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'RestoMart_Invoice_${order.id}.pdf',
+    // 1. Save directly to device storage (Downloads or Documents)
+    try {
+      final pdfBytes = await pdf.save();
+      final filename = 'RestoMart_Invoice_${order.id}.pdf';
+
+      Directory? saveDir;
+      if (Platform.isAndroid) {
+        // Try Public Downloads directory first
+        saveDir = Directory('/storage/emulated/0/Download');
+        if (!await saveDir.exists()) {
+          saveDir = await getExternalStorageDirectory();
+        }
+      } else {
+        saveDir = await getApplicationDocumentsDirectory();
+      }
+
+      if (saveDir != null) {
+        final filePath = '${saveDir.path}/$filename';
+        final file = File(filePath);
+        await file.writeAsBytes(pdfBytes, flush: true);
+
+        Get.snackbar(
+          'Invoice Downloaded',
+          'Saved to Downloads ($filename)',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green.shade50,
+          colorText: Colors.green.shade900,
+          icon: const Icon(Icons.check_circle, color: Colors.green),
+          duration: const Duration(seconds: 4),
+        );
+      }
+    } catch (e) {
+      debugPrint('Direct file save fallback: $e');
+    }
+
+    // 2. Open quick share/print options for instant access
+    await Printing.sharePdf(
+      bytes: await pdf.save(),
+      filename: 'RestoMart_Invoice_${order.id}.pdf',
     );
   }
 
@@ -246,8 +306,13 @@ class PdfInvoiceService {
     final Uint8List logoBytes = bytes.buffer.asUint8List();
     final logoImage = pw.MemoryImage(logoBytes);
     final ledgerData = await _getLedgerInfo();
+    final arabicFont = await _loadArabicFont();
 
-    final pdf = pw.Document();
+    final pdf = pw.Document(
+      theme: pw.ThemeData.withFont(
+        fontFallback: [arabicFont],
+      ),
+    );
 
     pdf.addPage(
       pw.Page(
