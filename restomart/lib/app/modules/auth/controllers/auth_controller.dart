@@ -269,9 +269,14 @@ class AuthController extends GetxController {
     }
   }
 
+  static const String _webClientId =
+      '883277273690-h8mdt5c7pescl1r7hgaj5m6jnot5u49p.apps.googleusercontent.com';
+
   Future<void> _initGoogleSignIn() async {
     try {
-      await GoogleSignIn.instance.initialize();
+      await GoogleSignIn.instance.initialize(
+        serverClientId: _webClientId,
+      );
     } catch (e) {
       debugPrint('Google Sign-In Init Error: $e');
     }
