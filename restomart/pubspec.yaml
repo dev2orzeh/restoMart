@@ -37,6 +37,8 @@ dependencies:
   shared_preferences: ^2.5.5
   shimmer: ^3.0.0
   url_launcher: ^6.3.2
+  arabic_reshaper: ^0.0.1
+  bidi: ^2.0.13
 
 dev_dependencies:
   flutter_test:

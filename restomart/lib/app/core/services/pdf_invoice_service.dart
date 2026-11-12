@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:arabic_reshaper/arabic_reshaper.dart';
+import 'package:bidi/bidi.dart' as bidi;
 import '../../modules/orders/controllers/orders_controller.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
@@ -27,7 +29,7 @@ class PdfInvoiceService {
   }
 
   static String _sanitizeText(String text) {
-    return text
+    final clean = text
         .replaceAll('&#8217;', "'")
         .replaceAll('&#039;', "'")
         .replaceAll('&amp;', '&')
@@ -40,6 +42,22 @@ class PdfInvoiceService {
         .replaceAll('”', '"')
         .replaceAll('–', '-')
         .replaceAll('—', '-');
+
+    // Check if string contains Arabic/Urdu unicode characters (0x0600 to 0x06FF, etc.)
+    final hasArabicOrUrdu = RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
+    if (hasArabicOrUrdu.hasMatch(clean)) {
+      try {
+        // Reshape disconnected letters to proper cursive connected forms
+        final reshaped = ArabicReshaper().reshape(clean);
+        // Correct visual display direction using BiDi
+        final visualCodes = bidi.logicalToVisual(reshaped);
+        return String.fromCharCodes(visualCodes);
+      } catch (e) {
+        debugPrint('Arabic/Urdu reshaping error: $e');
+      }
+    }
+
+    return clean;
   }
 
   static Future<Map<String, double>> _getLedgerInfo() async {
