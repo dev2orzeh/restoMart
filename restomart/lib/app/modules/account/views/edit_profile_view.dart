@@ -75,10 +75,15 @@ class _EditProfileViewState extends State<EditProfileView> {
     final prefs = await SharedPreferences.getInstance();
     if (uid != null) {
       await prefs.setString('local_business_name_$uid', businessNameController.text.trim());
+      await prefs.setString('cached_user_business_$uid', businessNameController.text.trim());
+      await prefs.setString('cached_user_name_$uid', nameController.text.trim());
+      await prefs.setString('cached_user_phone_$uid', phoneController.text.trim());
       try {
         await FirebaseFirestore.instance.collection('users').doc(uid).set({
           'businessName': businessNameController.text.trim(),
+          'restaurantName': businessNameController.text.trim(),
           'displayName': nameController.text.trim(),
+          'name': nameController.text.trim(),
           'phone': phoneController.text.trim(),
           'updatedAt': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));

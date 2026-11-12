@@ -278,8 +278,6 @@ class PdfInvoiceService {
     );
 
     // 1. Save directly to device storage (Downloads or Documents)
-    bool savedSuccessfully = false;
-
     try {
       final pdfBytes = await pdf.save();
       final filename = 'RestoMart_Invoice_${order.id}.pdf';
@@ -299,7 +297,6 @@ class PdfInvoiceService {
         final filePath = '${saveDir.path}/$filename';
         final file = File(filePath);
         await file.writeAsBytes(pdfBytes, flush: true);
-        savedSuccessfully = true;
 
         Get.snackbar(
           'Invoice Downloaded',
@@ -315,13 +312,21 @@ class PdfInvoiceService {
       debugPrint('Direct file save fallback: $e');
     }
 
-    // Only fallback to share dialog if direct file save wasn't possible
-    if (!savedSuccessfully) {
-      await Printing.sharePdf(
-        bytes: await pdf.save(),
-        filename: 'RestoMart_Invoice_${order.id}.pdf',
-      );
-    }
+    // Always open clean in-app PDF preview screen so user can view, print, or download
+    Get.to(() => Scaffold(
+      appBar: AppBar(
+        title: Text('Invoice #${order.id}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17, color: Colors.white)),
+        backgroundColor: const Color(0xFF25258F),
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: PdfPreview(
+        build: (format) async => pdf.save(),
+        canChangeOrientation: false,
+        canChangePageFormat: false,
+        canDebug: false,
+        pdfFileName: 'RestoMart_Invoice_${order.id}.pdf',
+      ),
+    ));
   }
 
   static Future<Uint8List> generateInvoiceBytes(OrderModel order) async {

@@ -141,10 +141,16 @@ class AuthController extends GetxController {
           if (data['phone'] != null && (data['phone'] as String).isNotEmpty) {
             userPhone.value = data['phone'] as String;
             await prefs.setString('cached_user_phone_${user.uid}', data['phone'] as String);
+          } else if (data['phoneNumber'] != null && (data['phoneNumber'] as String).isNotEmpty) {
+            userPhone.value = data['phoneNumber'] as String;
+            await prefs.setString('cached_user_phone_${user.uid}', data['phoneNumber'] as String);
           }
           if (data['name'] != null && (data['name'] as String).isNotEmpty) {
             userName.value = data['name'] as String;
             await prefs.setString('cached_user_name_${user.uid}', data['name'] as String);
+          } else if (data['displayName'] != null && (data['displayName'] as String).isNotEmpty) {
+            userName.value = data['displayName'] as String;
+            await prefs.setString('cached_user_name_${user.uid}', data['displayName'] as String);
           }
           if (data['profileImagePath'] != null && (data['profileImagePath'] as String).isNotEmpty) {
             profileImagePath.value = data['profileImagePath'] as String;
@@ -152,9 +158,11 @@ class AuthController extends GetxController {
           if (data['businessName'] != null && (data['businessName'] as String).isNotEmpty) {
             businessName.value = data['businessName'] as String;
             await prefs.setString('cached_user_business_${user.uid}', data['businessName'] as String);
+            await prefs.setString('local_business_name_${user.uid}', data['businessName'] as String);
           } else if (data['restaurantName'] != null && (data['restaurantName'] as String).isNotEmpty) {
             businessName.value = data['restaurantName'] as String;
             await prefs.setString('cached_user_business_${user.uid}', data['restaurantName'] as String);
+            await prefs.setString('local_business_name_${user.uid}', data['restaurantName'] as String);
           }
         }
       } catch (e) {
@@ -463,9 +471,11 @@ class AuthController extends GetxController {
           await FirebaseFirestore.instance.collection('users').doc(uid).set({
             'uid': uid,
             'name': name,
+            'displayName': name,
             'email': email,
             'phone': phone,
             'restaurantName': restaurantName,
+            'businessName': restaurantName,
             'restaurantAddress': restaurantAddress,
             if (registerProfileImagePath.value.isNotEmpty)
               'profileImagePath': registerProfileImagePath.value,
@@ -477,9 +487,15 @@ class AuthController extends GetxController {
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true)).timeout(const Duration(seconds: 20));
 
+          // Save local profile cache so it is instantly available upon login
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('cached_user_name_$uid', name);
+          await prefs.setString('cached_user_phone_$uid', phone);
+          await prefs.setString('cached_user_business_$uid', restaurantName);
+          await prefs.setString('local_business_name_$uid', restaurantName);
+
           // Save profile photo locally if uploaded
           if (registerProfileImagePath.value.isNotEmpty) {
-            final prefs = await SharedPreferences.getInstance();
             await prefs.setString('local_profile_image_$uid', registerProfileImagePath.value);
           }
 
