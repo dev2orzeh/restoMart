@@ -123,8 +123,10 @@ class AuthController extends GetxController {
         if (cachedP != null && cachedP.isNotEmpty) userPhone.value = cachedP;
         final cachedN = prefs.getString('cached_user_name_${user.uid}');
         if (cachedN != null && cachedN.isNotEmpty) userName.value = cachedN;
-        final cachedB = prefs.getString('cached_user_business_${user.uid}');
+        final cachedB = prefs.getString('cached_user_business_${user.uid}') ?? prefs.getString('local_business_name_${user.uid}');
         if (cachedB != null && cachedB.isNotEmpty) businessName.value = cachedB;
+        final cachedImg = prefs.getString('local_profile_image_${user.uid}');
+        if (cachedImg != null && cachedImg.isNotEmpty) profileImagePath.value = cachedImg;
       } catch (_) {}
 
       // Try to load user photo and restaurant name from Firestore first
@@ -228,6 +230,14 @@ class AuthController extends GetxController {
       );
 
       if (image != null) {
+        // Show loading dialog while processing and saving
+        Get.dialog(
+          const Center(
+            child: CircularProgressIndicator(color: Color(0xFF25258F)),
+          ),
+          barrierDismissible: false,
+        );
+
         // Read file bytes and convert to base64
         final bytes = await File(image.path).readAsBytes();
         final base64String = 'data:image/png;base64,${base64Encode(bytes)}';
@@ -248,6 +258,8 @@ class AuthController extends GetxController {
             debugPrint('Firestore photo update error: $fsError');
           }
         }
+
+        if (Get.isDialogOpen ?? false) Get.back();
 
         Get.snackbar(
           'Profile Photo Updated',
@@ -1041,16 +1053,24 @@ class AuthController extends GetxController {
                       final phone = phoneCtrl.text.trim();
                       final biz = businessCtrl.text.trim();
 
+                      // Show loading overlay so data is guaranteed saved without being lost
+                      Get.dialog(
+                        const Center(
+                          child: CircularProgressIndicator(color: Color(0xFF25258F)),
+                        ),
+                        barrierDismissible: false,
+                      );
+
                       userPhone.value = phone;
                       businessName.value = biz;
 
                       if (uid != null) {
-                        final prefs = await SharedPreferences.getInstance();
-                        await prefs.setString('local_business_name_$uid', biz);
-                        await prefs.setString('cached_user_phone_$uid', phone);
-                        await prefs.setString('cached_user_business_$uid', biz);
-
                         try {
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.setString('local_business_name_$uid', biz);
+                          await prefs.setString('cached_user_phone_$uid', phone);
+                          await prefs.setString('cached_user_business_$uid', biz);
+
                           await FirebaseFirestore.instance.collection('users').doc(uid).set({
                             'businessName': biz,
                             'restaurantName': biz,
@@ -1064,10 +1084,15 @@ class AuthController extends GetxController {
                             email: userEmail.value,
                             phone: phone,
                           );
-                        } catch (_) {}
+                        } catch (e) {
+                          debugPrint('Error saving profile data: $e');
+                        }
                       }
 
-                      Get.back();
+                      // Close loading dialog then close sheet
+                      if (Get.isDialogOpen ?? false) Get.back();
+                      if (Get.isBottomSheetOpen ?? false) Get.back();
+
                       Get.snackbar(
                         'Profile Completed',
                         'Your business details have been saved.',

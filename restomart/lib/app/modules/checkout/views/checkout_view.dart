@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get/get.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../../core/services/google_maps_service.dart';
 import '../../auth/controllers/auth_controller.dart';
 
 import '../../../core/constants/app_text_styles.dart';
@@ -698,6 +700,102 @@ class _CheckoutViewState extends State<CheckoutView> {
         'Please provide a valid mobile number for delivery verification.',
       );
       return;
+    }
+
+    // Check location mismatch before placing order (e.g. at university vs default home address)
+    final activeAddr = addressController.selectedAddress;
+    if (activeAddr != null) {
+      try {
+        final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+        if (serviceEnabled) {
+          final permission = await Geolocator.checkPermission();
+          if (permission != LocationPermission.denied && permission != LocationPermission.deniedForever) {
+            final pos = await Geolocator.getCurrentPosition(
+              locationSettings: const LocationSettings(
+                accuracy: LocationAccuracy.medium,
+                timeLimit: Duration(seconds: 4),
+              ),
+            );
+
+            double? targetLat = double.tryParse(activeAddr['lat'] ?? '');
+            double? targetLng = double.tryParse(activeAddr['lng'] ?? '');
+
+            if (targetLat == null || targetLng == null) {
+              final search = await GoogleMapsService.searchAddress(activeAddr['address'] ?? '');
+              if (search.isNotEmpty) {
+                targetLat = search[0]['lat'] as double?;
+                targetLng = search[0]['lon'] as double?;
+              }
+            }
+
+            if (targetLat != null && targetLng != null) {
+              final dist = Geolocator.distanceBetween(pos.latitude, pos.longitude, targetLat, targetLng);
+              // If away by > 2.5 km from selected delivery address, ask confirmation
+              if (dist > 2500) {
+                final bool? proceed = await Get.dialog<bool>(
+                  AlertDialog(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    title: const Row(
+                      children: [
+                        Icon(Icons.location_on_rounded, color: Color(0xFF25258F)),
+                        SizedBox(width: 8),
+                        Text('Confirm Address', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'You appear to be away from this delivery address:',
+                          style: TextStyle(fontSize: 13, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            activeAddr['address'] ?? activeAddr['label'] ?? '',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Do you still want to deliver here, or order to your current location?',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Get.back(result: false),
+                        child: const Text('Change Address', style: TextStyle(color: Colors.grey)),
+                      ),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF25258F),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () => Get.back(result: true),
+                        child: const Text('Yes, Deliver Here', style: TextStyle(color: Colors.white)),
+                      ),
+                    ],
+                  ),
+                );
+
+                if (proceed != true) {
+                  return;
+                }
+              }
+            }
+          }
+        }
+      } catch (locErr) {
+        debugPrint('Location verification check ignored: $locErr');
+      }
     }
 
     setState(() {
