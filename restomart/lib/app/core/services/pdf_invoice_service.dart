@@ -47,11 +47,14 @@ class PdfInvoiceService {
     final hasArabicOrUrdu = RegExp(r'[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]');
     if (hasArabicOrUrdu.hasMatch(clean)) {
       try {
-        // Reshape disconnected letters to proper cursive connected forms
-        final reshaped = ArabicReshaper().reshape(clean);
-        // Correct visual display direction using BiDi
-        final visualCodes = bidi.logicalToVisual(reshaped);
-        return String.fromCharCodes(visualCodes);
+        // Reshape only the Arabic/Urdu character segments so English text,
+        // brackets '()', numbers, hyphens, and units like '1kg' are not reversed or corrupted.
+        final urduBlockRegex = RegExp(r'([\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]+(?:\s+[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]+)*)');
+        return clean.replaceAllMapped(urduBlockRegex, (match) {
+          final reshaped = ArabicReshaper().reshape(match.group(0)!);
+          final visualCodes = bidi.logicalToVisual(reshaped);
+          return String.fromCharCodes(visualCodes);
+        });
       } catch (e) {
         debugPrint('Arabic/Urdu reshaping error: $e');
       }
