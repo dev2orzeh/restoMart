@@ -17,3 +17,14 @@
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
 
+# Keep models for Firestore deserialization
+-keepclassmembers class * {
+    @com.google.firebase.firestore.PropertyName <fields>;
+    @com.google.firebase.firestore.PropertyName <methods>;
+}
+
+# Keep GetX and app models
+-keep class com.restomart.restomart.** { *; }
+-dontwarn com.restomart.restomart.**
+
+
